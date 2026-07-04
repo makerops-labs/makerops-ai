@@ -1,0 +1,22 @@
+# SearXNG settings — overrides applied on top of the image defaults.
+# Reference: https://docs.searxng.org/admin/settings/index.html
+use_default_settings: true
+
+server:
+  # Overridden by the SEARXNG_SECRET env var at runtime (set in .env).
+  secret_key: ""
+  # Internal/private instance: no bot-detection limiter. Enabling the limiter
+  # requires a Valkey/Redis sidecar and would 429 the LLM tool callers.
+  limiter: false
+  public_instance: false
+
+search:
+  # JSON must be listed or the API returns 403 for format=json requests.
+  # The MCP web_search tool and Open WebUI both rely on the JSON API.
+  formats:
+    - html
+    - json
+  autocomplete: ""
+
+ui:
+  static_use_hash: true

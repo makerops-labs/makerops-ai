@@ -1,0 +1,41 @@
+# smolagents — AI agent workspace with Gradio chat UI
+# Project name: smolagents  (managed by start.sh / stop.sh)
+#
+# Exposes:
+#   8090/tcp — Gradio agent chat UI (container port 7860)
+#
+# Connects to Ollama at http://host.docker.internal:11434/v1 (OpenAI-compatible
+# API). Start ai/ollama and pull the models in SMOLAGENTS_CODING_MODEL_ID and
+# SMOLAGENTS_GENERAL_MODEL_ID before this service.
+#
+# UI: http://localhost:8090
+
+services:
+  smolagents:
+    build:
+      context: .
+      # Host networking during build: on WSL2 the host resolver
+      # (10.255.255.254) is unreachable from bridge networks, which breaks
+      # package downloads in build containers.
+      network: host
+    container_name: smolagents
+    # Same WSL2 quirk at runtime — explicit resolvers so the web search
+    # tools can resolve hostnames.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    env_file: .env
+    environment:
+      OLLAMA_API_BASE: "${OLLAMA_API_BASE:-http://host.docker.internal:11434/v1}"
+      SMOLAGENTS_DATA_DIR: /data
+    volumes:
+      - ${SMOLAGENTS_DATA_PATH:-./data/smolagents}:/data
+      # Agent code is bind-mounted so edits only need a container restart;
+      # rebuild the image only when dependencies change.
+      - ./agents:/app/agents:ro
+      - ./app.py:/app/app.py:ro
+    ports:
+      - "${SMOLAGENTS_PORT_HOST:-8090}:7860"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

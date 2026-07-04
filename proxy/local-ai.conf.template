@@ -1,0 +1,54 @@
+# makerops-ai — name-proxy routes for the private AI services.
+#
+# Drop-in for makerops-core's name-proxy: copy this file into
+#   makerops-core/infrastructure/name-proxy/nginx/templates/
+# and recreate the proxy. nginx's docker entrypoint renders every
+# *.template in that directory, so no compose changes are needed.
+# makerops-core gitignores local-*.conf.template — this file never
+# appears in the public repo. See proxy/README.md.
+#
+# Ports are hardcoded (they match each service's .env default) so the
+# template needs no envsubst variables. A route to a stopped service
+# returns 502 — graceful failure by design.
+
+# ── Open WebUI — LLM Chat Interface ──────────────────────────────────────────
+server {
+    listen      80;
+    server_name openwebui.localhost ~^openwebui\..+;
+    location / { proxy_pass http://host.docker.internal:8080; }
+}
+
+# ── smolagents — AI Agents ────────────────────────────────────────────────────
+server {
+    listen      80;
+    server_name agents.localhost ~^agents\..+;
+    location / { proxy_pass http://host.docker.internal:8090; }
+}
+
+# ── SearXNG — Metasearch Engine ──────────────────────────────────────────────
+server {
+    listen      80;
+    server_name search.localhost ~^search\..+;
+    location / { proxy_pass http://host.docker.internal:8098; }
+}
+
+# ── MCP Tools — LLM Tool Server & Write Approvals ────────────────────────────
+server {
+    listen      80;
+    server_name mcp.localhost ~^mcp\..+;
+    location / { proxy_pass http://host.docker.internal:8099; }
+}
+
+# ── Speech STT — speaches (faster-whisper) ───────────────────────────────────
+server {
+    listen      80;
+    server_name stt.localhost ~^stt\..+;
+    location / { proxy_pass http://host.docker.internal:8091; }
+}
+
+# ── Speech TTS — Kokoro ──────────────────────────────────────────────────────
+server {
+    listen      80;
+    server_name tts.localhost ~^tts\..+;
+    location / { proxy_pass http://host.docker.internal:8093; }
+}

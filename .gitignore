@@ -1,0 +1,21 @@
+# ── Docker bind-mount data directories ───────────────────────────────────────
+# These are created at runtime and must never be committed.
+**/db_data/
+**/config/
+**/data/
+**/registry/
+
+# ── Environment files (belt-and-suspenders; each service dir has its own) ────
+**/.env
+
+# ── Python artifacts ──────────────────────────────────────────────────────────
+**/.venv/
+**/__pycache__/
+
+# ── OS / editor artifacts ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

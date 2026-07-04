@@ -1,0 +1,47 @@
+# mcp-tools — Shared MCP tool server for LLMs (Open WebUI + smolagents)
+# Project name: mcp-tools  (managed by start.sh / stop.sh)
+#
+# Exposes:
+#   8099/tcp — streamable-HTTP MCP at /mcp (all domains) and /mcp/<domain>,
+#              plus the human write-approvals UI at /approvals and /healthz.
+#
+# Gives LLM clients web search (via ai/searxng), URL fetching, and tools for
+# Outline, InvenTree, Plane, n8n, ComfyUI, FreeScout, draw.io, trigger.dev,
+# and smolagents agent scaffolding. Domains without an API token in .env are
+# skipped at startup.
+
+services:
+  mcp-tools:
+    build:
+      context: .
+      # Host networking during build: on WSL2 the host resolver
+      # (10.255.255.254) is unreachable from bridge networks, which breaks
+      # package downloads in build containers.
+      network: host
+    container_name: mcp-tools
+    # Same WSL2 quirk at runtime — explicit resolvers so web_search/fetch_url
+    # can resolve hostnames.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    env_file: .env
+    volumes:
+      - ${MCPTOOLS_DATA_PATH:-./data/mcp-tools}:/data
+      # agent_create scaffolds new smolagents agents into the repo working
+      # tree (git-visible). Writes are restricted to agents/custom/ in code.
+      - ../smolagents/agents:/smolagents-agents
+      # Code is bind-mounted so edits only need a container restart;
+      # rebuild the image only when dependencies change.
+      - ./server.py:/app/server.py:ro
+      - ./tools:/app/tools:ro
+      - ./workflows:/app/workflows:ro
+    ports:
+      - "${MCPTOOLS_PORT_HOST:-8099}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

@@ -1,0 +1,47 @@
+# speech — Voice services for the AI stack (STT + TTS)
+# Project name: speech  (managed by start.sh / stop.sh)
+#
+# Exposes:
+#   8091/tcp — speaches: OpenAI-compatible speech-to-text (/v1/audio/transcriptions)
+#   8093/tcp — Kokoro-FastAPI: OpenAI-compatible text-to-speech (/v1/audio/speech)
+#
+# Consumed by ai/openwebui (Admin Settings → Audio). Both services are
+# CPU-only on purpose: they never compete with the LLMs for VRAM.
+#
+# STT API: http://localhost:8091/v1
+# TTS API: http://localhost:8093/v1
+
+services:
+  stt:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    container_name: speech-stt
+    # WSL2 quirk: the host resolver (10.255.255.254) is unreachable from
+    # bridge networks — explicit resolvers so model downloads resolve.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    environment:
+      # Whisper models download from Hugging Face on first use; keep the
+      # cache on the host so restarts don't re-download.
+      HF_HOME: /data/hf
+    volumes:
+      - ${SPEECH_DATA_PATH:-./data/speech}/stt:/data/hf
+    ports:
+      - "${SPEECH_STT_PORT_HOST:-8091}:8000"
+    restart: unless-stopped
+
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: speech-tts
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    ports:
+      - "${SPEECH_TTS_PORT_HOST:-8093}:8880"
+    restart: unless-stopped

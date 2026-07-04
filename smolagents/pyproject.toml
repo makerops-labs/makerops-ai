@@ -1,0 +1,11 @@
+[project]
+name = "makerops-smolagents"
+version = "0.1.0"
+description = "Local AI agents for MakerOps — planning, documents, code, business ops"
+requires-python = ">=3.10"
+dependencies = [
+    "smolagents[toolkit,openai,mcp,telemetry,gradio]>=1.26,<2",
+]
+
+[tool.uv]
+package = false

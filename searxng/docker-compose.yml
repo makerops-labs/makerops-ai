@@ -1,0 +1,31 @@
+# searxng — Self-hosted metasearch engine (private web search for LLM tools)
+# Project name: searxng  (managed by start.sh / stop.sh)
+#
+# Exposes:
+#   8098/tcp — SearXNG web UI and /search API (JSON format enabled)
+#
+# Consumed by ai/openwebui (native SearXNG web search) and ai/mcp-tools
+# (web_search tool). No GPU required.
+#
+# UI: http://localhost:8098
+
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    # WSL2 quirk: the host resolver (10.255.255.254) is unreachable from
+    # bridge networks — explicit resolvers so outbound engine queries resolve.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    env_file: .env
+    environment:
+      # These map onto settings.yml keys (server.base_url / server.secret_key).
+      SEARXNG_BASE_URL: "${SEARXNG_BASE_URL:-http://localhost:8098/}"
+      SEARXNG_SECRET: "${SEARXNG_SECRET}"
+    volumes:
+      - ./settings.yml:/etc/searxng/settings.yml:ro
+      - ${SEARXNG_DATA_PATH:-./data/searxng}:/var/cache/searxng
+    ports:
+      - "${SEARXNG_PORT_HOST:-8098}:8080"
+    restart: unless-stopped
