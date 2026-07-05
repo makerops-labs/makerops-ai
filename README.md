@@ -26,6 +26,26 @@ These services depend on the sibling checkout of `makerops-core`:
 - NVIDIA Container Toolkit for the GPU services (documented in
   makerops-core's `ai/README.md`).
 
+## Setup
+
+The complete, ordered walkthrough is
+**[docs/ai-setup-checklist.md](docs/ai-setup-checklist.md)** — work it top to
+bottom; each phase is independently useful. In outline:
+
+1. Start Ollama (in makerops-core) and pull the models from the hierarchy
+   table, including the `qwen3.5:9b-64k` derivative (checklist §1).
+2. Start SearXNG, then mcp-tools (note the approvals URL+token it prints),
+   then Open WebUI / smolagents / speech. Each `start.sh` creates `.env`
+   from `.env.example` on first run.
+3. Add service API tokens to `mcp-tools/.env` one at a time (checklist §2) —
+   domains without a token simply stay unmounted.
+4. Do the UI-side wiring in Open WebUI (checklist §3–4): web search, tool
+   connections, RAG embedding model, audio, and the workspace-model presets
+   from [openwebui/contexts/](openwebui/contexts/) (git is the source of
+   truth; the UI stores them in its DB).
+5. Optional: name-proxy drop-ins ([proxy/README.md](proxy/README.md)) and
+   Hermes ([docs/hermes-setup.md](docs/hermes-setup.md)).
+
 ## Services
 
 | Service | Port | Purpose |
@@ -40,6 +60,42 @@ There is also one host-level (non-Docker) component:
 [Hermes Agent](https://hermes-agent.nousresearch.com), a terminal agent with
 persistent per-project memory that runs against Ollama — see
 [docs/hermes-setup.md](docs/hermes-setup.md).
+
+### Using the stack day to day
+
+- **Chat** at <http://localhost:8080> (or `openwebui.localhost`): pick a
+  workspace-model preset (Research Assistant, Ops Assistant, Coding
+  Assistant, …) rather than a bare model — presets carry the right system
+  prompt, tool scope, and baseline context. Attach an image to any
+  qwen3.5/qwen3.6 chat for vision; use the mic/speaker buttons once speech
+  is wired.
+- **Agents** at <http://localhost:8090> (or `agents.localhost`): give the
+  manager a task; it delegates to web_researcher / coder / ops / auditor.
+  Ask for a "review" or "second opinion" to trigger the multi-model audit.
+- **Second opinions**: paste task + artifact into the Code Auditor or
+  General Auditor preset (manual), or let the smolagents auditor consult the
+  reviewer pool (automated). Reviewers are deliberately weaker,
+  different-lineage models — weigh their findings, don't auto-apply.
+- **Write actions** (wiki edits, stock adjustments, …) may answer
+  `PENDING APPROVAL #id`: review and approve at
+  <http://mcp.localhost/approvals>. Additive writes notify; destructive ones
+  gate — tune per tool in `mcp-tools/.env`.
+
+### Tool discovery (progressive disclosure)
+
+mcp-tools publishes a documentation tree so agents (and humans) can discover
+tools without carrying the whole catalog in context:
+
+| Level | HTTP | From any agent |
+| --- | --- | --- |
+| Domain manifest | `GET :8099/context` | `tools_help('')` |
+| One domain's tools | `GET :8099/context/<domain>` | `tools_help('<domain>')` |
+| Full usage for one tool | `GET :8099/context/<domain>/<tool>` | `tools_help('<domain>/<tool>')` |
+
+Every agent gets the root manifest as baseline context automatically:
+smolagents injects it into all agents' instructions (`agents/context.py`),
+Open WebUI presets start with [contexts/_baseline.md](openwebui/contexts/_baseline.md),
+and Hermes profiles learn it once into persistent memory.
 
 ### Model hierarchy
 
@@ -97,6 +153,53 @@ version control; every cross-reference from the public repo is local-only:
   search/watchers to avoid duplicates). A parent-level `CLAUDE.md` gives
   AI-assistant sessions the two-repo layout and the never-commit-to-core
   rule.
+
+---
+
+## Tips, Gotchas & Debugging
+
+Hard-won specifics — check here before deep-diving (core-side basics like
+`.env` inline comments and WSL2 DNS are in makerops-core's README):
+
+- **`docker compose restart` does NOT re-read `.env`** — token/policy/model
+  changes need `docker compose -p <project> up -d` (recreate). Code changes
+  in smolagents/mcp-tools only need a restart (source is bind-mounted);
+  rebuild only when `pyproject.toml`/`uv.lock` change.
+- **First reply after a model switch is slow.** Only one model lives in VRAM
+  at a time; swapping loads ~7–23 GB. `docker exec ollama ollama ps` shows
+  what's loaded and the CPU/GPU split.
+- **Large-model OOM signature**: `llama-server process has terminated:
+  signal: killed` during load = not enough free system RAM for the VRAM
+  overflow. Free RAM or raise the WSL2 cap (24 GB works for the current
+  hierarchy on a 16 GB GPU).
+- **A chat "has no tools"?** Tools attach per workspace-model, per-base-model
+  (Admin Settings → Models), or per-chat (+ menu) — a bare-model thread has
+  none. Old threads also bias the model toward its earlier "no tools"
+  claims; test in a fresh thread. Set **Function calling: Native** for the
+  qwen leads.
+- **Domain missing from tools?** `curl :8099/healthz` — domains without an
+  API token are skipped at startup (by design). Add the token to
+  `mcp-tools/.env` and recreate.
+- **MCP client hangs forever** → it's pointed at an unmounted domain (404s
+  hang mcpadapt). smolagents pre-checks `/healthz` (`agents/tools.py`); keep
+  that pattern in new consumers. Endpoints need the trailing slash
+  (`/mcp/web/`); bare paths get a 307.
+- **Agents combining several domains** must merge tools with
+  `agents/tools.get_domains_tools(*domains)` — every endpoint carries
+  `tools_help`, and duplicate tool names crash agent init.
+- **Long tool lists degrade local models.** Attach few domains per
+  agent/preset; let `tools_help` handle discovery. Prefer `/mcp/<domain>/`
+  over the composed `/mcp/`.
+- **Open WebUI settings live in its DB**, not in git — presets, embedding
+  model, audio, connections are recreate-from-git per the checklist. Its
+  web-search env vars seed the DB on first boot only.
+- **Don't commit runtime state**: `.env` and `data/` are gitignored
+  everywhere; committed config must not live in a `config/` dir (that glob
+  is ignored).
+- **Logs**: `docker compose -p <project> logs -f`; agent traces can go to an
+  OTLP collector via `OTEL_EXPORTER_OTLP_ENDPOINT` (smolagents `.env`).
+- **Never commit this repo's content into makerops-core** — see
+  [CLAUDE.md](CLAUDE.md) and the Local integration section above.
 
 ---
 

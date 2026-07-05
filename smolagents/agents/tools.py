@@ -54,3 +54,18 @@ def get_domain_tools(domain: str) -> list:
         return []
     _clients.append(client)  # keep the session alive for the app lifetime
     return tools
+
+
+def get_domains_tools(*domains: str) -> list:
+    """Merged tools from several domains, deduplicated by name — every domain
+    endpoint carries the shared tools_help tool, and smolagents requires
+    unique tool names per agent."""
+    seen: set[str] = set()
+    merged = []
+    for domain in domains:
+        for tool in get_domain_tools(domain):
+            if tool.name in seen:
+                continue
+            seen.add(tool.name)
+            merged.append(tool)
+    return merged

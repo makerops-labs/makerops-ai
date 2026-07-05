@@ -11,7 +11,9 @@ from fastmcp import FastMCP
 
 from . import config, policy
 
-mcp = FastMCP("agents")
+mcp = FastMCP(
+    "agents",
+    instructions="Scaffold, list, and read custom smolagents specialist agents.")
 required_env = None  # writes to the bind mount, no token
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]{2,30}$")
@@ -27,18 +29,19 @@ Picked up by the manager after: docker compose -p smolagents restart
 
 from smolagents import ToolCallingAgent
 
+from ..context import with_baseline
 from ..model import get_model
-from ..tools import get_domain_tools
+from ..tools import get_domains_tools
 
 
 def build_${name}_agent() -> ToolCallingAgent:
-    tools = [t for domain in $domains for t in get_domain_tools(domain)]
+    tools = get_domains_tools(*$domains)
     return ToolCallingAgent(
         name="$name",
         description="$description",
         model=get_model("$model_role"),
         tools=tools,
-        instructions=(
+        instructions=with_baseline(
             $instructions
         ),
         max_steps=12,

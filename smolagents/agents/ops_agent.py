@@ -6,15 +6,16 @@ image generation, and diagrams. Only domains that are mounted on mcp-tools
 from smolagents import ToolCallingAgent
 
 from . import config
+from .context import with_baseline
 from .model import get_model
-from .tools import get_domain_tools
+from .tools import get_domains_tools
 
 OPS_DOMAINS = ("outline", "inventree", "plane", "n8n", "freescout",
                "triggerdev", "comfyui", "drawio", "approvals")
 
 
 def build_ops_agent() -> ToolCallingAgent:
-    tools = [t for domain in OPS_DOMAINS for t in get_domain_tools(domain)]
+    tools = get_domains_tools(*OPS_DOMAINS)
     return ToolCallingAgent(
         tools=tools,
         model=get_model("general"),
@@ -26,7 +27,7 @@ def build_ops_agent() -> ToolCallingAgent:
             "conversations (FreeScout), and generates images and diagrams. "
             "Give it a concrete operational task."
         ),
-        instructions=(
+        instructions=with_baseline(
             "Check live data with the read tools before answering. Use write "
             "tools only when the task explicitly asks for a change, and "
             "describe what you changed. Some writes are held for human "

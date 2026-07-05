@@ -3,6 +3,9 @@
 Endpoints:
   /mcp            — all mounted tool domains in one MCP server (streamable HTTP)
   /mcp/<domain>   — one domain only (smaller tool list for local models)
+  /context[/...]  — progressive-disclosure tool documentation tree (markdown);
+                    the same tree backs the tools_help() MCP tool present on
+                    every domain endpoint
   /approvals      — human review UI for gated write actions (+ audit history)
   /healthz        — liveness + mounted-domain report
   /               — redirects to /approvals
@@ -16,10 +19,12 @@ import uvicorn
 from fastmcp import FastMCP
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
+                                 RedirectResponse)
 from starlette.routing import Mount, Route
 
 from tools import available_domains, skipped_domains, config, policy
+from tools.docs_tree import DocsTree
 
 # ── Compose the MCP apps ───────────────────────────────────────────────────────
 
@@ -28,7 +33,29 @@ for domain, missing in skipped_domains().items():
     print(f"[mcp-tools] domain '{domain}' NOT mounted — set {missing} in .env to enable it.")
 print(f"[mcp-tools] mounted domains: {', '.join(domains)}")
 
+# ── Documentation tree + tools_help ────────────────────────────────────────────
+# One tree, two access paths: GET /context[/...] over HTTP, and the
+# tools_help(path) tool registered on every domain endpoint so any agent can
+# browse it with plain tool-calling.
+
+tree = DocsTree(domains, skipped_domains(), config.MCPTOOLS_PUBLIC_URL)
+
+
+async def tools_help(path: str = "") -> str:
+    """Browse the tool documentation tree: '' lists every tool domain with its
+    purpose, '<domain>' lists that domain's tools, '<domain>/<tool>' gives full
+    usage details for one tool. Drill down before using an unfamiliar tool;
+    back out if a branch does not fit the task."""
+    text = await tree.render(path)
+    return text or (f"Unknown documentation path {path!r}. "
+                    "Start with tools_help('') for the domain manifest.")
+
+
+for sub in domains.values():
+    sub.tool(tools_help)
+
 composed = FastMCP("makerops-tools")
+composed.tool(tools_help)  # local registration wins over the mounted copies
 for sub in domains.values():
     # Tools already carry their domain prefix in their names; mount unprefixed.
     composed.mount(sub)
@@ -144,6 +171,19 @@ async def resolve_action(request: Request):
     return RedirectResponse("/approvals", status_code=303)
 
 
+async def context_node(request: Request):
+    """Markdown node of the documentation tree; helpful 404 for unknown paths."""
+    path = "/".join(p for p in (request.path_params.get("domain"),
+                                request.path_params.get("tool")) if p)
+    text = await tree.render(path)
+    if text is None:
+        return PlainTextResponse(
+            f"Unknown context path '/{path}'. Valid: /context, /context/<domain>, "
+            f"/context/<domain>/<tool>. Mounted domains: {', '.join(sorted(domains))}.",
+            status_code=404)
+    return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")
+
+
 async def healthz(request: Request):
     return JSONResponse({"status": "ok", "domains": sorted(domains),
                          "skipped": skipped_domains(),
@@ -165,6 +205,9 @@ async def slash_redirect(request: Request):
 
 routes = [
     Route("/healthz", healthz),
+    Route("/context", context_node),
+    Route("/context/{domain}", context_node),
+    Route("/context/{domain}/{tool}", context_node),
     Route("/approvals", approvals_page),
     Route("/approvals/{action_id}/{verb:str}", resolve_action, methods=["POST"]),
     Route("/", root),

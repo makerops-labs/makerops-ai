@@ -9,7 +9,9 @@ from fastmcp import FastMCP
 from . import config, policy
 from .client import DEFAULT_TIMEOUT, make_client, request_json
 
-mcp = FastMCP("n8n")
+mcp = FastMCP(
+    "n8n",
+    instructions="Workflow automation (n8n): list, inspect, and trigger workflows and webhooks.")
 required_env = "N8N_API_KEY"
 
 _client = make_client(config.N8N_URL, headers={"X-N8N-API-KEY": config.N8N_API_KEY})

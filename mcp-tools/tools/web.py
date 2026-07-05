@@ -13,7 +13,9 @@ from fastmcp import FastMCP
 from . import config
 from .client import DEFAULT_TIMEOUT
 
-mcp = FastMCP("web")
+mcp = FastMCP(
+    "web",
+    instructions="Private web search (SearXNG) and content-type-aware page/document fetching.")
 required_env = None  # always mounted
 
 _TEXT_TYPES = ("application/json", "application/xml", "application/javascript",

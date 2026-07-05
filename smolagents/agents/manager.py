@@ -14,6 +14,7 @@ from smolagents import CodeAgent
 from . import config
 from .audit_agent import build_audit_agent
 from .coding_agent import build_coding_agent
+from .context import with_baseline
 from .model import get_model
 from .ops_agent import build_ops_agent
 from .tools import get_domain_tools
@@ -50,7 +51,7 @@ def build_manager_agent() -> CodeAgent:
                         build_ops_agent(), build_audit_agent(),
                         *_build_custom_agents()],
         additional_authorized_imports=["json", "pathlib", "datetime"],
-        instructions=(
+        instructions=with_baseline(
             "You coordinate work for a small business operations team. "
             "Break large tasks into steps, delegate web research to "
             "web_researcher, programming or data tasks to coder, and tasks "

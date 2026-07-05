@@ -5,7 +5,9 @@ from fastmcp import FastMCP
 from . import config, policy
 from .client import fmt, make_client, request_json
 
-mcp = FastMCP("outline")
+mcp = FastMCP(
+    "outline",
+    instructions="Company wiki (Outline): search, read, create, and update documents.")
 required_env = "OUTLINE_API_TOKEN"
 
 _client = make_client(config.OUTLINE_URL,

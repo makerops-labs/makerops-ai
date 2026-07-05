@@ -97,6 +97,11 @@ domain should appear in `domains`).
       Ops Assistant, Knowledge Curator, Inventory Manager, Coding Assistant,
       Studio, Code Auditor, General Auditor. Each becomes a named entry in
       the chat model picker with its system prompt and tool scope baked in.
+- [ ] Every preset's system prompt starts with the shared baseline block
+      ([openwebui/contexts/_baseline.md](../openwebui/contexts/_baseline.md) — standing
+      awareness of mcp-tools and the tools_help documentation tree). When
+      presets change, re-paste the updated prompts into the existing
+      Workspace Models.
 - [ ] Test the review loop: have Coding Assistant produce a small function,
       then paste the task + code into Code Auditor and confirm it returns
       severity-ordered findings (or a clean bill) rather than a rewrite.
@@ -134,6 +139,9 @@ domain should appear in `domains`).
 - [ ] Install and configure per [docs/hermes-setup.md](hermes-setup.md) —
       including the per-project profile convention that keeps project
       contexts isolated.
+- [ ] Baseline tool awareness per profile: register the profile's
+      mcp-tools domains and teach it the baseline block once (see
+      "Baseline tool awareness" in [docs/hermes-setup.md](hermes-setup.md)).
 - [ ] Verify isolation: two profiles, one distinguishing fact each, confirm
       neither recalls the other's fact.
 

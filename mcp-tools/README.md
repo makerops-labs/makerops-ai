@@ -25,6 +25,27 @@ Requires searxng for the web domain. Service domains additionally need an
 API token in `.env` — **domains without a token are skipped at startup** (the
 log and `/healthz` report which), so you can enable services one at a time.
 
+## Tool documentation tree (`/context` + `tools_help`)
+
+The server publishes a progressive-disclosure documentation tree so agents
+can discover tools without carrying the full catalog in context:
+
+| Level | HTTP | MCP |
+| --- | --- | --- |
+| Root manifest (domain per line) | `GET /context` | `tools_help('')` |
+| One domain's tools | `GET /context/<domain>` | `tools_help('<domain>')` |
+| Full usage doc for one tool | `GET /context/<domain>/<tool>` | `tools_help('<domain>/<tool>')` |
+
+`tools_help(path)` is registered on **every** domain endpoint (and the
+composed `/mcp`), so any connected agent can browse the tree with plain tool
+calling. Content is rendered live from the mounted domains (each domain's
+`FastMCP(..., instructions=...)` blurb + tool docstrings + parameter
+schemas) and cached per process. smolagents injects the root manifest into
+every agent's instructions as baseline context (see
+[smolagents/README.md](../smolagents/README.md)); Open WebUI presets carry a
+static baseline block ([openwebui/contexts/_baseline.md](../openwebui/contexts/_baseline.md)).
+
+
 ## Tool domains
 
 | Domain | Tools | Needs |

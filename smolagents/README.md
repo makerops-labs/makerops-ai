@@ -90,6 +90,27 @@ uv sync && ./start.sh   # start.sh always rebuilds the image
 
 ---
 
+## Baseline tool awareness
+
+Every agent's `instructions` automatically end with a **Tool environment**
+section (`agents/context.py`): the root of the mcp-tools documentation tree
+(`GET /context`) — one line per domain — plus guidance to drill down with the
+`tools_help(path)` tool that every domain endpoint carries. Agents know what
+exists across the whole stack without carrying the full tool catalog in
+context, and inspect a tool's full usage doc before first use. If mcp-tools
+is down at startup a static fallback is used (agents keep working).
+
+Custom agents scaffolded by `agent_create` get the same wrapper
+(`with_baseline`). Scaffolds created before this convention can be upgraded
+by re-scaffolding or by hand-wrapping their `instructions=` with
+`with_baseline(...)` from `..context`.
+
+Agents that combine several domains must merge tools with
+`tools.get_domains_tools(*domains)` — every domain endpoint carries
+`tools_help`, and smolagents requires unique tool names per agent.
+
+---
+
 ## Executor safety
 
 smolagents `CodeAgent`s execute model-written Python. The stance here:

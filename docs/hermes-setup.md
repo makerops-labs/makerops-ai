@@ -69,13 +69,25 @@ project uses Postgres" / "this project uses SQLite"), start fresh sessions
 in both, and ask what database the project uses. Each profile should only
 know its own fact.
 
+## Baseline tool awareness (once per profile)
+
+Give every profile standing knowledge of the stack's tools — no per-session
+prompting:
+
+1. Register the mcp-tools domains the profile needs via the Hermes MCP CLI
+   (`http://localhost:8099/mcp/<domain>/`, one server per domain — same
+   per-domain scoping rationale as
+   [openwebui/contexts/](../openwebui/contexts/README.md)). Every domain
+   endpoint automatically includes `tools_help(path)`, the browsable tool
+   documentation tree (`''` = domain manifest, `'<domain>'`,
+   `'<domain>/<tool>'` = full usage details).
+2. In the profile's first session, paste the baseline block from
+   [openwebui/contexts/_baseline.md](../openwebui/contexts/_baseline.md)
+   and tell Hermes to remember it — per-profile persistent memory carries
+   the awareness into every later session.
+
 ## Day-to-day
 
 - Switch the backing model mid-session with `/model <name>` (any pulled
   Ollama model with tool support works).
-- Hermes can act as an MCP server and manage MCP servers via its CLI —
-  the stack's mcp-tools domains (`http://localhost:8099/mcp/<domain>/`)
-  can be added per profile so each project's Hermes only sees the tools
-  it needs (same per-domain scoping rationale as
-  [openwebui/contexts/](../openwebui/contexts/README.md)).
 - Keep Ollama running (`makerops-core/ai/ollama/start.sh`) before starting a session.

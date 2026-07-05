@@ -9,7 +9,9 @@ from fastmcp import FastMCP
 from . import config, policy
 from .client import fmt, make_client, request_json
 
-mcp = FastMCP("triggerdev")
+mcp = FastMCP(
+    "triggerdev",
+    instructions="Background jobs (trigger.dev): inspect tasks and trigger runs.")
 required_env = "TRIGGERDEV_SECRET_KEY"
 
 _client = make_client(config.TRIGGERDEV_URL,

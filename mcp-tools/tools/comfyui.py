@@ -14,7 +14,9 @@ from fastmcp import FastMCP
 from . import config, policy
 from .client import DEFAULT_TIMEOUT
 
-mcp = FastMCP("comfyui")
+mcp = FastMCP(
+    "comfyui",
+    instructions="Image generation (ComfyUI/FLUX): create images from text prompts.")
 required_env = None  # no token; the ComfyUI API is unauthenticated on the LAN
 
 _WORKFLOW_PATH = Path(__file__).resolve().parent.parent / "workflows" / "txt2img.json"

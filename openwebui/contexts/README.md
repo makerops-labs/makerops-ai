@@ -37,6 +37,16 @@ tuning you do in the UI.
 | [Code Auditor](code-auditor.md) | gpt-oss:20b | web (optional) |
 | [General Auditor](general-auditor.md) | gemma4:12b | web (optional) |
 
+### Baseline tool-environment block
+
+Every preset's system prompt **starts with the shared baseline block** from
+[_baseline.md](_baseline.md) — it gives each assistant standing awareness of
+mcp-tools and the `tools_help()` documentation tree without per-chat
+prompting. New presets must include it; when `_baseline.md` changes, update
+every preset and re-paste the prompts into their Workspace Models. (The
+per-user alternative — Settings → General → System Prompt — is described in
+`_baseline.md`.)
+
 Base models follow the lead-per-domain hierarchy in [README.md](../../README.md):
 leads produce work, the auditor presets give second opinions from
 same-expertise, lower-benchmark models (including a different lineage) to

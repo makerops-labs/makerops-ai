@@ -13,7 +13,9 @@ from fastmcp import FastMCP
 
 from . import config
 
-mcp = FastMCP("drawio")
+mcp = FastMCP(
+    "drawio",
+    instructions="Diagramming (draw.io): turn structured descriptions into editable diagram links.")
 required_env = None  # stateless, no token
 
 _DIAGRAMS_DIR = config.DATA_DIR / "diagrams"

@@ -6,7 +6,9 @@ from fastmcp import FastMCP
 from . import config, policy
 from .client import fmt, make_client, request_json
 
-mcp = FastMCP("freescout")
+mcp = FastMCP(
+    "freescout",
+    instructions="Help desk (FreeScout): read customer conversations and draft replies.")
 required_env = "FREESCOUT_API_KEY"
 
 _client = make_client(config.FREESCOUT_URL,

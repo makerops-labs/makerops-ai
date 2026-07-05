@@ -5,7 +5,9 @@ from fastmcp import FastMCP
 from . import config, policy
 from .client import fmt, make_client, request_json
 
-mcp = FastMCP("inventree")
+mcp = FastMCP(
+    "inventree",
+    instructions="Inventory (InvenTree): look up parts and stock, adjust stock levels.")
 required_env = "INVENTREE_API_TOKEN"
 
 _client = make_client(config.INVENTREE_URL,

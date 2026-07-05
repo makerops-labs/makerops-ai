@@ -10,6 +10,7 @@ from openai import OpenAI
 from smolagents import ToolCallingAgent, tool
 
 from . import config
+from .context import with_baseline
 from .model import get_model
 
 _REVIEWER_SYSTEM = (
@@ -62,7 +63,7 @@ def build_audit_agent() -> ToolCallingAgent:
             "and whether it is coding or general work; it returns merged "
             "findings from the reviewer models."
         ),
-        instructions=(
+        instructions=with_baseline(
             "Call collect_reviews exactly once, with domain='coding' for "
             "code or domain='general' otherwise, passing the task context "
             "and the full artifact verbatim. Then merge the reviews into "

@@ -5,7 +5,9 @@ from fastmcp import FastMCP
 from . import config, policy
 from .client import fmt, make_client, request_json
 
-mcp = FastMCP("plane")
+mcp = FastMCP(
+    "plane",
+    instructions="Project management (Plane): browse projects, create and update issues.")
 required_env = "PLANE_API_KEY"
 
 _BASE = f"/api/v1/workspaces/{config.PLANE_WORKSPACE_SLUG}"

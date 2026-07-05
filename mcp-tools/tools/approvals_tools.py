@@ -5,7 +5,9 @@ from fastmcp import FastMCP
 
 from . import policy
 
-mcp = FastMCP("approvals")
+mcp = FastMCP(
+    "approvals",
+    instructions="Check and list the human write-approval queue for gated write actions.")
 required_env = None  # always mounted
 
 

@@ -7,6 +7,7 @@ Executor safety section of the service README before widening this list.
 from smolagents import CodeAgent
 
 from . import config
+from .context import with_baseline
 from .model import get_model
 
 AUTHORIZED_IMPORTS = ["json", "csv", "pathlib", "datetime", "re", "math"]
@@ -23,7 +24,7 @@ def build_coding_agent() -> CodeAgent:
             "and solve programming tasks. Give it a self-contained task with "
             "any needed inputs."
         ),
-        instructions=(
+        instructions=with_baseline(
             f"Write any output files under {config.DATA_DIR} so they persist "
             "outside the sandbox."
         ),
