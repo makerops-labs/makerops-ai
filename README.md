@@ -80,6 +80,24 @@ own `start.sh` / `stop.sh` / `teardown.sh` and `.env.example`, following the
 makerops-core conventions (including the WSL2 DNS workaround: explicit
 `dns:` servers at runtime, `network: host` for image builds).
 
+### Local integration with makerops-core
+
+The two repos stay under one parent directory with strictly separate
+version control; every cross-reference from the public repo is local-only:
+
+- **Symlink**: `makerops-core/ai/private` → `../../makerops-ai`, excluded
+  via `makerops-core/.git/info/exclude` (git's per-clone exclude file — it
+  is never tracked, so the public repo carries no trace; do not use
+  `.gitignore` for this, it is public). Navigation convenience only:
+  **always run services from the real path** (`makerops-ai/<service>/start.sh`)
+  so compose project directories stay canonical.
+- **Proxy routes**: install the drop-in per [proxy/README.md](proxy/README.md).
+- **One-window workflow**: open `makerops.code-workspace` in the parent
+  directory (both repos as workspace folders; the symlink is excluded from
+  search/watchers to avoid duplicates). A parent-level `CLAUDE.md` gives
+  AI-assistant sessions the two-repo layout and the never-commit-to-core
+  rule.
+
 ---
 
 ## Attribution
