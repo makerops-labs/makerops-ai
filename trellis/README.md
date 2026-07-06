@@ -12,9 +12,18 @@ image in, a textured GLB 3D model out. Exposed to agents through the
 
 | Port | What |
 | --- | --- |
-| 8094 | Job server API (also `http://trellis.localhost` via name-proxy) |
+| 8094 | Web GUI at `/` + job server API (also `http://trellis.localhost` via name-proxy) |
 
-## Usage
+## Web GUI
+
+`http://trellis.localhost` (or `localhost:8094`) serves a single-page GUI
+(`index.html`, bind-mounted like `serve.py`): drop an image, set
+seed/texture/simplify, and watch the job; the result renders in an
+interactive 3D viewer with a download button. The viewer uses Google's
+`<model-viewer>` component from a CDN, so the *browser* needs internet —
+generation itself is fully local.
+
+## API usage
 
 ```bash
 ./start.sh          # build (first time 20-40 min) + start

@@ -131,6 +131,13 @@ def _worker() -> None:
             _write_status(job_id, status="failed", error=f"{type(exc).__name__}: {exc}")
 
 
+@app.get("/")
+def index():
+    """Standalone web GUI (the name-proxy card links here): upload an image,
+    submit a job, watch it, preview/download the GLB."""
+    return FileResponse("/app/index.html", media_type="text/html")
+
+
 @app.get("/healthz")
 def healthz():
     return {"status": "ok", "model": MODEL_ID, "weights_ready": _weights_ready,

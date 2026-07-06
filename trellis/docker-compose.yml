@@ -38,8 +38,9 @@ services:
       TRELLIS_DATA_DIR: /data
     volumes:
       - ${TRELLIS_DATA_PATH:-./data}:/data
-      # Serving code is bind-mounted — edit + restart, no rebuild.
+      # Serving code + GUI are bind-mounted — edit + restart, no rebuild.
       - ./serve.py:/app/serve.py:ro
+      - ./index.html:/app/index.html:ro
     ports:
       - "${TRELLIS_PORT_HOST:-8094}:8000"
     deploy:
