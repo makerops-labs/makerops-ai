@@ -109,9 +109,11 @@ share training blind spots.
 | Domain | Lead | Reviewers |
 | --- | --- | --- |
 | Coding | `qwen3.6:35b` (73.4% SWE-bench Verified) | `qwen3-coder:30b`, `gpt-oss:20b` |
+| Default chat / task dispatch | `qwen3.6:35b-64k` (derivative, checklist §1) | — |
 | General / agents / planning | `qwen3.5:9b` (`qwen3.5:9b-64k` for agent use) | `gemma4:12b`, `gpt-oss:20b` |
 | Vision understanding | `qwen3.5:9b` / `qwen3.6:35b` (both natively multimodal) | — |
 | Image generation | FLUX.1 (ComfyUI, in makerops-core) | — |
+| Speech (TTS, agent-usable) | Kokoro-82M (speech service, CPU) | — |
 | Embeddings (RAG) | `qwen3-embedding:0.6b` | — |
 
 The review workflow is exposed two ways: the **Code Auditor / General

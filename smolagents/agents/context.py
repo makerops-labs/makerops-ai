@@ -19,7 +19,9 @@ _FALLBACK = (
     "tools_help('<domain>') lists a domain's tools, and "
     "tools_help('<domain>/<tool>') gives full usage details. Tools marked "
     "WRITE ACTION may answer 'PENDING APPROVAL #id' — report that to the "
-    "user and stop; never retry a pending write."
+    "user and stop; never retry a pending write. The agents domain also "
+    "lets a client dispatch background jobs to the local agent team "
+    "(agent_dispatch / agent_job_status / agent_job_result)."
 )
 
 _GUIDANCE = (

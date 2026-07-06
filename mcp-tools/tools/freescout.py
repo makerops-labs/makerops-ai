@@ -1,5 +1,9 @@
 """FreeScout (help desk) tools. Requires the paid "API & Webhooks" module;
-auth via X-FreeScout-API-Key header."""
+auth via X-FreeScout-API-Key header.
+
+FreeScout serves an HTML "Access denied" 403 when the request Host does not
+match its SITE_URL, so requests reaching it via host.docker.internal must
+carry the Host header of the browser-facing URL (FREESCOUT_SITE_HOST)."""
 
 from fastmcp import FastMCP
 
@@ -11,8 +15,10 @@ mcp = FastMCP(
     instructions="Help desk (FreeScout): read customer conversations and draft replies.")
 required_env = "FREESCOUT_API_KEY"
 
-_client = make_client(config.FREESCOUT_URL,
-                      headers={"X-FreeScout-API-Key": config.FREESCOUT_API_KEY})
+_headers = {"X-FreeScout-API-Key": config.FREESCOUT_API_KEY}
+if config.FREESCOUT_SITE_HOST:
+    _headers["Host"] = config.FREESCOUT_SITE_HOST
+_client = make_client(config.FREESCOUT_URL, headers=_headers)
 
 
 def _req(method: str, path: str, **kwargs):

@@ -1,7 +1,7 @@
 """Business operations agent: works the stack's services through the shared
-MCP tool server — wiki, inventory, projects, automation, helpdesk, jobs,
-image generation, and diagrams. Only domains that are mounted on mcp-tools
-(token configured) contribute tools."""
+MCP tool server — wiki, inventory, projects, automation, helpdesk, and jobs.
+Media creation (images, diagrams, audio) belongs to the studio agent. Only
+domains that are mounted on mcp-tools (token configured) contribute tools."""
 
 from smolagents import ToolCallingAgent
 
@@ -11,7 +11,7 @@ from .model import get_model
 from .tools import get_domains_tools
 
 OPS_DOMAINS = ("outline", "inventree", "plane", "n8n", "freescout",
-               "triggerdev", "comfyui", "drawio", "approvals")
+               "triggerdev", "approvals")
 
 
 def build_ops_agent() -> ToolCallingAgent:
@@ -23,9 +23,9 @@ def build_ops_agent() -> ToolCallingAgent:
         description=(
             "Operates the business stack: searches and writes wiki docs "
             "(Outline), queries inventory (InvenTree), manages project issues "
-            "(Plane), runs automations (n8n, trigger.dev), handles helpdesk "
-            "conversations (FreeScout), and generates images and diagrams. "
-            "Give it a concrete operational task."
+            "(Plane), runs automations (n8n, trigger.dev), and handles "
+            "helpdesk conversations (FreeScout). Give it a concrete "
+            "operational task. Media creation belongs to studio."
         ),
         instructions=with_baseline(
             "Check live data with the read tools before answering. Use write "

@@ -30,6 +30,10 @@ services:
       # agent_create scaffolds new smolagents agents into the repo working
       # tree (git-visible). Writes are restricted to agents/custom/ in code.
       - ../smolagents/agents:/smolagents-agents
+      # Shared agent-job queue: agent_dispatch writes queued records here;
+      # the smolagents job worker picks them up and owns all other status
+      # transitions. Also feeds the /inbox page.
+      - ${SMOLAGENTS_JOBS_PATH:-../smolagents/data/smolagents/jobs}:/agent-jobs
       # Code is bind-mounted so edits only need a container restart;
       # rebuild the image only when dependencies change.
       - ./server.py:/app/server.py:ro

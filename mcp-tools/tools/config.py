@@ -39,14 +39,24 @@ COMFYUI_CHECKPOINT = _env("COMFYUI_CHECKPOINT")
 
 FREESCOUT_URL = _env("FREESCOUT_URL", "http://host.docker.internal:8095")
 FREESCOUT_API_KEY = _env("FREESCOUT_API_KEY")
+# FreeScout 403s ("Access denied") when the request Host differs from its
+# SITE_URL; this Host header must match the browser-facing URL.
+FREESCOUT_SITE_HOST = _env("FREESCOUT_SITE_HOST", "localhost:8095")
 
 DRAWIO_PUBLIC_URL = _env("DRAWIO_PUBLIC_URL", "http://draw.localhost")
+
+SPEECH_TTS_URL = _env("SPEECH_TTS_URL", "http://host.docker.internal:8093")
+SPEECH_TTS_VOICE = _env("SPEECH_TTS_VOICE", "af_heart")
 
 TRIGGERDEV_URL = _env("TRIGGERDEV_URL", "http://host.docker.internal:3040")
 TRIGGERDEV_SECRET_KEY = _env("TRIGGERDEV_SECRET_KEY")
 
 # Host path of smolagents/agents is bind-mounted here (rw) for agent_create.
 SMOLAGENTS_AGENTS_DIR = Path(_env("SMOLAGENTS_AGENTS_DIR", "/smolagents-agents"))
+
+# Shared agent-job queue (smolagents/data/smolagents/jobs bind-mounted rw)
+# for agent_dispatch / job status / the /inbox page.
+AGENT_JOBS_DIR = Path(_env("AGENT_JOBS_DIR", "/agent-jobs"))
 
 # ── Write policy ──────────────────────────────────────────────────────────────
 APPROVALS_TOKEN = _env("APPROVALS_TOKEN")

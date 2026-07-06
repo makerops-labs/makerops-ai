@@ -31,6 +31,23 @@ GENERAL_REVIEW_MODEL_IDS = _model_list("SMOLAGENTS_GENERAL_REVIEW_MODEL_IDS",
 DATA_DIR = os.environ.get("SMOLAGENTS_DATA_DIR", "./data")
 MAX_STEPS = int(os.environ.get("SMOLAGENTS_MAX_STEPS", "12"))
 
+# Manager orchestration: extra step headroom, periodic replanning, and the
+# segment cap for long jobs that continue from a workspace synopsis.
+MANAGER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_MANAGER_MAX_STEPS", "20"))
+PLANNING_INTERVAL = int(os.environ.get("SMOLAGENTS_PLANNING_INTERVAL", "5"))
+MAX_SEGMENTS = int(os.environ.get("SMOLAGENTS_MAX_SEGMENTS", "8"))
+
+# Background job queue shared with mcp-tools (agent_dispatch) via bind mount.
+JOBS_DIR = os.path.join(DATA_DIR, "jobs")
+
+# Optional webhook (e.g. n8n) POSTed when a background job finishes or needs
+# attention. Empty = disabled.
+NOTIFY_WEBHOOK = os.environ.get("SMOLAGENTS_NOTIFY_WEBHOOK", "")
+
+# Public URL of mcp-tools, used for inbox links in reports/notifications.
+MCP_TOOLS_PUBLIC_URL = os.environ.get("SMOLAGENTS_MCP_PUBLIC_URL",
+                                      "http://mcp.localhost")
+
 # Shared MCP tool server (mcp-tools). Agents load tools from its
 # per-domain endpoints; unavailable domains degrade to no tools.
 MCP_TOOLS_URL = os.environ.get("SMOLAGENTS_MCP_URL",

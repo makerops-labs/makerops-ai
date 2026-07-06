@@ -55,6 +55,14 @@ reviewer. On a switch update: `SMOLAGENTS_*_MODEL_ID` env vars,
   model (`qwen3-embedding:0.6b`), Audio (STT 8091 / TTS 8093), tool
   connections — the repo docs are recreate-from-git instructions
   (`docs/ai-setup-checklist.md` is the walkthrough).
+- **Agent job queue is a shared directory**: `smolagents/data/smolagents/
+  jobs`, bind-mounted into mcp-tools as `/agent-jobs`. mcp-tools
+  (`agent_dispatch`) only creates `queued` records; the smolagents worker
+  thread (`agents/jobs.py`, started by `app.py`) owns all other status
+  transitions and runs one job at a time (single model in VRAM). Long jobs
+  run in segments resuming from `jobs/<id>/workspace/synopsis.md`. Adding
+  the volume needed `docker compose -p mcp-tools up -d` (recreate) —
+  remember `restart` never applies compose/volume/.env changes.
 
 ## Dependencies on makerops-core (sibling checkout `../makerops-core`)
 

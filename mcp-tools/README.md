@@ -19,6 +19,8 @@ Built with [FastMCP](https://gofastmcp.com) + httpx. No other framework.
 - MCP endpoint (all domains): `http://localhost:8099/mcp`
 - Per-domain endpoints: `http://localhost:8099/mcp/<domain>`
 - Approvals UI: <http://mcp.localhost/approvals> (token printed by start.sh)
+- Task inbox (agent jobs): <http://mcp.localhost/inbox> (same token/cookie)
+- Generated media (speech audio, ...): `http://mcp.localhost/files/...`
 - Health: `http://localhost:8099/healthz`
 
 Requires searxng for the web domain. Service domains additionally need an
@@ -59,7 +61,8 @@ static baseline block ([openwebui/contexts/_baseline.md](../openwebui/contexts/_
 | `freescout` | list/get conversations, reply (draft-first), create conversation | `FREESCOUT_API_KEY` (paid API & Webhooks module) |
 | `drawio` | `drawio_create_diagram_link` | — |
 | `triggerdev` | trigger task, get/list runs | `TRIGGERDEV_SECRET_KEY` |
-| `agents` | `agent_list`, `agent_read`, `agent_create` (scaffolds smolagents agents) | — |
+| `speech` | `speech_list_voices`, `speech_generate_audio` (TTS → `/files/audio/`) | speech (Kokoro, 8093) running |
+| `agents` | `agent_list`, `agent_dispatch`, `agent_job_status`, `agent_job_result`, `agent_jobs_list`, `agent_read`, `agent_create` | smolagents running (for dispatch) |
 | `approvals` | `approval_status`, `list_pending_approvals` (read-only for models) | — |
 
 `fetch_url` reviews any file type it can extract information from: web pages
@@ -110,14 +113,29 @@ node. The JSON body contains `event` (`action.completed` or `action.pending`),
 webhook, notify-tier events still land in the audit log (visible at
 `/approvals`), and the model relays pending-approval messages in chat.
 
-## Agent scaffolding
+## Agent workforce (dispatch + scaffolding)
 
-`agent_create` writes a new smolagents agent module into
-`smolagents/agents/custom/` **in the repo working tree** — review it with
-`git diff`, revert with `git checkout`. The content comes from a fixed
-template (the LLM supplies parameters, never raw Python), names are
-validated, and existing files are never overwritten. The new agent is picked
-up after `docker compose -p smolagents restart`.
+The `agents` domain is the bridge to the smolagents team:
+
+- **`agent_dispatch(objective, deliverables, ...)`** queues a background
+  job for the agent manager and returns `JOB #<id>` immediately. The queue
+  is a shared directory (`smolagents/data/smolagents/jobs`, bind-mounted
+  here as `/agent-jobs`, override with `SMOLAGENTS_JOBS_PATH`); the
+  smolagents job worker picks jobs up and owns every status transition —
+  this side only creates `queued` records. Track with
+  `agent_job_status` / `agent_job_result` / `agent_jobs_list`; finished
+  reports and needs-attention items render in the **task inbox** at
+  `/inbox`, and the smolagents side can notify via
+  `SMOLAGENTS_NOTIFY_WEBHOOK` (see
+  [smolagents/README.md](../smolagents/README.md) "Background jobs").
+- **`agent_list`** shows the live roster (from `jobs/roster.json`, written
+  by the worker at startup) plus custom agents.
+- **`agent_create`** writes a new smolagents agent module into
+  `smolagents/agents/custom/` **in the repo working tree** — review it with
+  `git diff`, revert with `git checkout`. The content comes from a fixed
+  template (the LLM supplies parameters, never raw Python), names are
+  validated, and existing files are never overwritten. The new agent is
+  picked up after `docker compose -p smolagents restart`.
 
 ## Connecting clients
 

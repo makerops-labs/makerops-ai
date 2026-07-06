@@ -1,4 +1,5 @@
 from .coding_agent import build_coding_agent
+from .jobs import start_job_worker
 from .manager import build_manager_agent
 from .model import get_model
 from .telemetry import setup_telemetry
@@ -10,4 +11,5 @@ __all__ = [
     "build_web_agent",
     "get_model",
     "setup_telemetry",
+    "start_job_worker",
 ]

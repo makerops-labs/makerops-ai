@@ -28,6 +28,7 @@ tuning you do in the UI.
 
 | Context | Base model | Tool domains |
 | --- | --- | --- |
+| [Task Dispatcher](task-dispatcher.md) | qwen3.6:35b-64k | agents, approvals |
 | [Research Assistant](research-assistant.md) | qwen3.5:9b | web |
 | [Ops Assistant](ops-assistant.md) | qwen3.5:9b | outline, inventree, plane, n8n, freescout, triggerdev, approvals |
 | [Knowledge Curator](knowledge-curator.md) | qwen3.5:9b | outline, web, approvals |
@@ -53,6 +54,18 @@ same-expertise, lower-benchmark models (including a different lineage) to
 catch the lead's blind spots.
 
 The same contexts exist in smolagents: web_researcher ≈ Research Assistant,
-ops ≈ Ops Assistant, coder ≈ Coding Assistant. For the narrower ones
-(Inventory Manager, Knowledge Curator), scaffold an equivalent agent with
-`agent_create` if you want it in the agent workspace too.
+ops ≈ Ops Assistant, coder ≈ Coding Assistant, writer ≈ Knowledge Curator,
+studio ≈ Studio. For the narrower ones (Inventory Manager), scaffold an
+equivalent agent with `agent_create` if you want it in the agent workspace
+too.
+
+### Dispatching to agents
+
+Any preset can mention the agent workforce (it is in the baseline block),
+but only chats with the **agents** tool connection can actually dispatch.
+The **Task Dispatcher** preset is the dedicated front door: it interviews
+you into a concrete brief, queues the job with `agent_dispatch`, and tracks
+it. Jobs run in the smolagents container (one at a time — single-GPU model
+residency); reports land in the task inbox at `mcp.localhost/inbox` and can
+notify via `SMOLAGENTS_NOTIFY_WEBHOOK` (n8n). Durable deliverables go to
+the Outline collection **"Agent Deliverables"** (create it once in Outline).

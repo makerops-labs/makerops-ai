@@ -22,8 +22,9 @@ from starlette.requests import Request
 from starlette.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
                                  RedirectResponse)
 from starlette.routing import Mount, Route
+from starlette.staticfiles import StaticFiles
 
-from tools import available_domains, skipped_domains, config, policy
+from tools import available_domains, skipped_domains, config, jobs_store, policy
 from tools.docs_tree import DocsTree
 
 # ── Compose the MCP apps ───────────────────────────────────────────────────────
@@ -96,7 +97,16 @@ h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.1em;color:#f07820;
 .audit{font-size:.8rem;color:#7a9ab8}.audit b{color:#e8edf2}
 .badge{display:inline-block;padding:.1rem .5rem;border-radius:999px;font-size:.72rem;
        border:1px solid #2a3f58;color:#7a9ab8;margin-left:.5rem}
+nav a{color:#5ba8d4;text-decoration:none;font-size:.85rem;margin-left:1rem}
+.st-completed{color:#7bc67e}.st-running{color:#5ba8d4}.st-queued{color:#7a9ab8}
+.st-failed{color:#e57373}.st-needs_attention,.st-needs_clarification{color:#f0b429}
+.st-cancelled{color:#7a9ab8}
+ul.dlv{margin:.25rem 0 .5rem 1.25rem;padding:0}
+ul.dlv a{color:#5ba8d4}
 """
+
+_NAV = ('<nav><a href="/approvals">Approvals</a>'
+        '<a href="/inbox">Task inbox</a></nav>')
 
 
 def _authorized(request: Request) -> bool:
@@ -147,7 +157,7 @@ async def approvals_page(request: Request):
     body = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>MCP Tools — Approvals</title><style>{_PAGE_CSS}</style></head><body>
     <header><h1><span>MCP Tools</span> — Write Approvals</h1>
-    <div class="meta">{len(pending)} pending</div></header><main>
+    <div class="meta">{len(pending)} pending</div>{_NAV}</header><main>
     {''.join(cards) if cards else '<div class="empty">No write actions are waiting for approval.</div>'}
     <h2>Recent activity</h2>{audit_rows or '<div class="empty">No activity yet.</div>'}
     </main></body></html>"""
@@ -171,6 +181,69 @@ async def resolve_action(request: Request):
     return RedirectResponse("/approvals", status_code=303)
 
 
+def _job_card(job: dict) -> str:
+    brief = job.get("brief", {})
+    report = job.get("report") or {}
+    status = job.get("status", "?")
+    deliverables = "".join(
+        (f"<li>{html.escape(d.get('type', ''))}: "
+         + (f"<a href='{html.escape(d['location'])}'>{html.escape(d.get('title') or d['location'])}</a>"
+            if str(d.get("location", "")).startswith("http")
+            else html.escape(f"{d.get('title', '')} — {d.get('location', '')}"))
+         + "</li>")
+        for d in report.get("deliverables", []) if isinstance(d, dict))
+    attention = "".join(f"<li>⚠ {html.escape(str(a))}</li>"
+                        for a in report.get("attention", []) or [])
+    questions = "".join(f"<li>❓ {html.escape(str(q))}</li>"
+                        for q in report.get("questions", []) or [])
+    synopsis_path = jobs_store.JOBS_DIR / job["id"] / "workspace" / "synopsis.md"
+    synopsis = ""
+    if synopsis_path.is_file():
+        try:
+            synopsis = (f"<details><summary class='meta'>workspace synopsis</summary>"
+                        f"<pre>{html.escape(synopsis_path.read_text()[:6000])}</pre></details>")
+        except OSError:
+            pass
+    raw = html.escape(json.dumps({"report": report, "error": job.get("error"),
+                                  "log_tail": job.get("log_tail", "")},
+                                 indent=1, ensure_ascii=False)[:6000])
+    return f"""
+    <div class="card">
+      <h3><span class="st-{html.escape(status)}">{html.escape(status)}</span>
+          — {html.escape(brief.get('objective', '(no objective)')[:140])}
+          <span class="badge">{html.escape(job['id'])}</span></h3>
+      <div class="meta">created {job.get('created_at')} · finished {job.get('finished_at') or '—'}
+          · segments {job.get('segments', 1)} · source {html.escape(str(job.get('source', '')))}
+          {f"· continues {html.escape(str(job.get('parent_job_id')))}" if job.get('parent_job_id') else ''}</div>
+      {f"<p>{html.escape(str(report.get('summary', ''))[:800])}</p>" if report.get('summary') else ''}
+      {f"<ul class='dlv'>{deliverables}</ul>" if deliverables else ''}
+      {f"<ul class='dlv'>{attention}</ul>" if attention else ''}
+      {f"<ul class='dlv'>{questions}</ul>" if questions else ''}
+      {synopsis}
+      <details><summary class="meta">raw report + log tail</summary><pre>{raw}</pre></details>
+    </div>"""
+
+
+async def inbox_page(request: Request):
+    if not _authorized(request):
+        return _auth_page()
+    jobs = jobs_store.list_jobs() if jobs_store.available() else []
+    counts = jobs_store.counts() if jobs_store.available() else {}
+    cards = "".join(_job_card(j) for j in jobs)
+    body = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>MCP Tools — Task Inbox</title><style>{_PAGE_CSS}</style></head><body>
+    <header><h1><span>MCP Tools</span> — Task Inbox</h1>
+    <div class="meta">{counts.get('queued', 0)} queued · {counts.get('running', 0)} running</div>
+    {_NAV}</header><main>
+    {cards if cards else '<div class="empty">No agent jobs yet. Dispatch one with agent_dispatch (agents tool domain).</div>'}
+    </main></body></html>"""
+    resp = HTMLResponse(body)
+    token = request.query_params.get("token")
+    if token and token == config.APPROVALS_TOKEN:
+        resp.set_cookie("approvals_token", token, httponly=True, max_age=86400 * 30)
+    return resp
+
+
 async def context_node(request: Request):
     """Markdown node of the documentation tree; helpful 404 for unknown paths."""
     path = "/".join(p for p in (request.path_params.get("domain"),
@@ -187,7 +260,8 @@ async def context_node(request: Request):
 async def healthz(request: Request):
     return JSONResponse({"status": "ok", "domains": sorted(domains),
                          "skipped": skipped_domains(),
-                         "pending_approvals": len(policy.list_actions(status="pending"))})
+                         "pending_approvals": len(policy.list_actions(status="pending")),
+                         "jobs": jobs_store.counts() if jobs_store.available() else None})
 
 
 async def root(request: Request):
@@ -203,6 +277,9 @@ async def slash_redirect(request: Request):
 
 # ── Assemble & run ─────────────────────────────────────────────────────────────
 
+_GENERATED_DIR = config.DATA_DIR / "generated"
+_GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+
 routes = [
     Route("/healthz", healthz),
     Route("/context", context_node),
@@ -210,6 +287,9 @@ routes = [
     Route("/context/{domain}/{tool}", context_node),
     Route("/approvals", approvals_page),
     Route("/approvals/{action_id}/{verb:str}", resolve_action, methods=["POST"]),
+    Route("/inbox", inbox_page),
+    # Generated media (speech audio, ...) written by tools under data/generated.
+    Mount("/files", app=StaticFiles(directory=str(_GENERATED_DIR))),
     Route("/", root),
     # Domain endpoints must precede the catch-all /mcp mount. Exact bare paths
     # 307 to their slash-terminated mounts.

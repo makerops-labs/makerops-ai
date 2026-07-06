@@ -17,6 +17,13 @@ phase is independently useful, so you can stop at any point and come back.
   # 64K-context variant used by agents and Hermes
   printf 'FROM qwen3.5:9b\nPARAMETER num_ctx 64000\n' | \
     docker exec -i ollama sh -c 'cat > /tmp/Modelfile && ollama create qwen3.5:9b-64k -f /tmp/Modelfile'
+  # 64K-context variant of the coding lead — default chat / Task Dispatcher
+  # base model. KV cache on top of a ~19-23 GB model can hit the 24 GB WSL2
+  # RAM cap: after creating it, run a long prompt and check
+  # `docker exec ollama ollama ps`; on OOM (signal: killed) recreate with
+  # num_ctx 32000 instead.
+  printf 'FROM qwen3.6:35b\nPARAMETER num_ctx 64000\n' | \
+    docker exec -i ollama sh -c 'cat > /tmp/Modelfile && ollama create qwen3.6:35b-64k -f /tmp/Modelfile'
   # Reviewer pool (multi-model audit)
   docker exec ollama ollama pull qwen3-coder:30b      # ~19 GB
   docker exec ollama ollama pull gemma4:12b           # ~7.6 GB
@@ -93,10 +100,16 @@ domain should appear in `domains`).
 ## 4. Context models (predefined LLM contexts)
 
 - [ ] Create each preset from [openwebui/contexts/](../openwebui/contexts/)
-      as a Workspace Model (recipe in that README): Research Assistant,
-      Ops Assistant, Knowledge Curator, Inventory Manager, Coding Assistant,
-      Studio, Code Auditor, General Auditor. Each becomes a named entry in
-      the chat model picker with its system prompt and tool scope baked in.
+      as a Workspace Model (recipe in that README): Task Dispatcher,
+      Research Assistant, Ops Assistant, Knowledge Curator, Inventory
+      Manager, Coding Assistant, Studio, Code Auditor, General Auditor.
+      Each becomes a named entry in the chat model picker with its system
+      prompt and tool scope baked in.
+- [ ] Make the default chat agent-aware: set `qwen3.6:35b-64k` as your
+      default model and paste the baseline block
+      ([openwebui/contexts/_baseline.md](../openwebui/contexts/_baseline.md))
+      into **Settings → General → System Prompt** — then any chat knows the
+      tool domains and the agent workforce without a preset.
 - [ ] Every preset's system prompt starts with the shared baseline block
       ([openwebui/contexts/_baseline.md](../openwebui/contexts/_baseline.md) — standing
       awareness of mcp-tools and the tools_help documentation tree). When
@@ -144,6 +157,31 @@ domain should appear in `domains`).
       "Baseline tool awareness" in [docs/hermes-setup.md](hermes-setup.md)).
 - [ ] Verify isolation: two profiles, one distinguishing fact each, confirm
       neither recalls the other's fact.
+
+## 5d. Agent task dispatch (background jobs)
+
+- [ ] Recreate mcp-tools so it mounts the shared job queue (new compose
+      volume): `cd mcp-tools && docker compose -p mcp-tools up -d`. Check
+      `curl -s http://localhost:8099/healthz | jq .jobs` returns counts
+      (not `null`), and restart smolagents (`docker restart smolagents`) so
+      its job worker writes `roster.json`.
+- [ ] Create the **"Agent Deliverables"** collection in Outline — agents
+      publish durable documents there (dated names, job-id footer).
+- [ ] Job notifications: point `SMOLAGENTS_NOTIFY_WEBHOOK` in
+      `smolagents/.env` at an n8n webhook (the §6 workflow works — job
+      events carry `event` = `job.completed` / `job.needs_clarification` /
+      `job.needs_attention` / `job.failed`, plus `job_id`, `objective`,
+      `summary`, `inbox_url`), then
+      `cd smolagents && docker compose -p smolagents up -d` (recreate —
+      `.env` changed).
+- [ ] Dry-run: in the **Task Dispatcher** preset, ask for a small research
+      task, confirm the brief, and let it dispatch. Watch
+      `agent_job_status`, then check the report in the task inbox at
+      <http://mcp.localhost/inbox> (same token/cookie as approvals).
+- [ ] Long jobs run in segments: the manager keeps
+      `data/smolagents/jobs/<id>/workspace/synopsis.md` as working memory
+      and continues from it in a fresh context. Segment count shows on the
+      inbox card; cap it with `SMOLAGENTS_MAX_SEGMENTS` (default 8).
 
 ## 6. Write notifications (recommended)
 

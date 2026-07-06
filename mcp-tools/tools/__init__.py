@@ -20,6 +20,7 @@ DOMAINS: dict[str, str | None] = {
     "drawio": None,
     "triggerdev": "TRIGGERDEV_SECRET_KEY",
     "agents": None,
+    "speech": None,
 }
 
 _MODULE_NAMES = {"approvals": "approvals_tools", "agents": "agents_domain"}
