@@ -55,6 +55,7 @@ bottom; each phase is independently useful. In outline:
 | [SearXNG](https://github.com/searxng/searxng) | [8098](http://localhost:8098) | Private metasearch — web-search backend for Open WebUI and mcp-tools |
 | MCP Tools | [8099](http://localhost:8099/healthz) | Shared MCP tool server — read/write tools for the business stack with human write-approvals |
 | [Speech](speech/) | [8091](http://localhost:8091) STT / [8093](http://localhost:8093) TTS | speaches (faster-whisper) speech-to-text + Kokoro text-to-speech, CPU-only |
+| [TRELLIS](trellis/) | [8094](http://localhost:8094/healthz) | Image-to-3D generation (GLB) — GPU-heavy, start-on-demand only |
 
 There is also one host-level (non-Docker) component:
 [Hermes Agent](https://hermes-agent.nousresearch.com), a terminal agent with
@@ -113,6 +114,7 @@ share training blind spots.
 | General / agents / planning | `qwen3.5:9b` (`qwen3.5:9b-64k` for agent use) | `gemma4:12b`, `gpt-oss:20b` |
 | Vision understanding | `qwen3.5:9b` / `qwen3.6:35b` (both natively multimodal) | — |
 | Image generation | FLUX.1 (ComfyUI, in makerops-core) | — |
+| Image-to-3D | `TRELLIS-image-large` 1.2B (trellis service, GPU on-demand) | — |
 | Speech (TTS, agent-usable) | Kokoro-82M (speech service, CPU) | — |
 | Embeddings (RAG) | `qwen3-embedding:0.6b` | — |
 
@@ -129,7 +131,9 @@ context presets, and this table.
 Ollama first (in makerops-core, with the models from the hierarchy table
 pulled), then SearXNG, then mcp-tools, then Open WebUI, smolagents, and/or
 speech. SearXNG, mcp-tools, and speech have no GPU dependency and are safe to
-leave running continuously. The full tool-access setup (API tokens, Open
+leave running continuously. TRELLIS is the opposite: a generation needs most
+of the 16 GB card, so start it only for 3D work and stop it after
+(`trellis/start.sh` / `stop.sh`). The full tool-access setup (API tokens, Open
 WebUI connections, context presets, approval tuning) is walked through in
 [docs/ai-setup-checklist.md](docs/ai-setup-checklist.md).
 

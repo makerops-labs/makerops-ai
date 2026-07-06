@@ -48,6 +48,8 @@ DRAWIO_PUBLIC_URL = _env("DRAWIO_PUBLIC_URL", "http://draw.localhost")
 SPEECH_TTS_URL = _env("SPEECH_TTS_URL", "http://host.docker.internal:8093")
 SPEECH_TTS_VOICE = _env("SPEECH_TTS_VOICE", "af_heart")
 
+TRELLIS_URL = _env("TRELLIS_URL", "http://host.docker.internal:8094")
+
 TRIGGERDEV_URL = _env("TRIGGERDEV_URL", "http://host.docker.internal:3040")
 TRIGGERDEV_SECRET_KEY = _env("TRIGGERDEV_SECRET_KEY")
 

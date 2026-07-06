@@ -31,7 +31,8 @@ manifest points at `local-icons/…` (copied above; also untracked). The
 refresh — only the routes template needs the container recreate.
 
 Routes added: `openwebui.localhost`, `agents.localhost`,
-`search.localhost`, `mcp.localhost`, `stt.localhost`, `tts.localhost`.
+`search.localhost`, `mcp.localhost`, `stt.localhost`, `tts.localhost`,
+`trellis.localhost`.
 
 ## Uninstall (disable routes + cards)
 

@@ -38,8 +38,9 @@ phase is independently useful, so you can stop at any point and come back.
 - [ ] Start the tool server: `mcp-tools/start.sh`. Note the **approvals
       URL with token** it prints — open it once per browser (it sets a
       cookie). Check `curl -s http://localhost:8099/healthz | jq` — only
-      `web`, `approvals`, `comfyui`, `drawio`, `agents` mount until you add
-      tokens below.
+      `web`, `approvals`, `comfyui`, `drawio`, `agents`, `speech`, `trellis`
+      mount until you add tokens below (the last two degrade gracefully
+      while their backing service is stopped).
 - [ ] Enable the private AI routes on makerops-core's reverse proxy so
       `search.localhost` and `mcp.localhost` resolve: install the drop-in
       template per [proxy/README.md](../proxy/README.md). (The public
@@ -146,6 +147,20 @@ domain should appear in `domains`).
       voice `af_heart`.
 - [ ] Test: use the microphone button in a chat and confirm transcription;
       tap the speaker icon on a reply and confirm audio.
+
+## 5b-2. TRELLIS (image-to-3D, optional)
+
+- [ ] Build + start: `trellis/start.sh` (first build compiles CUDA
+      extensions — 20–40 min; first start then downloads ~5 GB of weights:
+      wait for `curl -s localhost:8094/healthz | jq` → `weights_ready:true`).
+- [ ] Warm-up generation (also JIT-compiles nvdiffrast — allow ~10 min):
+      `curl -s -F image=@photo.png localhost:8094/generate`, poll
+      `curl localhost:8094/jobs/<id>`, then download `/jobs/<id>/model.glb`.
+- [ ] Agent path: ask the smolagents studio agent (or the Open WebUI Studio
+      preset) to make a 3D model from an image URL — the GLB lands under
+      `mcp.localhost/files/models/`.
+- [ ] Stop when done: `trellis/stop.sh` — a generation needs most of the
+      16 GB card, so the service is start-on-demand only.
 
 ## 5c. Hermes Agent (persistent memory)
 

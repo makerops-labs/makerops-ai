@@ -62,6 +62,7 @@ static baseline block ([openwebui/contexts/_baseline.md](../openwebui/contexts/_
 | `drawio` | `drawio_create_diagram_link` | — |
 | `triggerdev` | trigger task, get/list runs | `TRIGGERDEV_SECRET_KEY` |
 | `speech` | `speech_list_voices`, `speech_generate_audio` (TTS → `/files/audio/`) | speech (Kokoro, 8093) running |
+| `trellis` | `trellis_image_to_3d` (image → GLB → `/files/models/`) | trellis (8094) running — GPU, start-on-demand |
 | `agents` | `agent_list`, `agent_dispatch`, `agent_job_status`, `agent_job_result`, `agent_jobs_list`, `agent_read`, `agent_create` | smolagents running (for dispatch) |
 | `approvals` | `approval_status`, `list_pending_approvals` (read-only for models) | — |
 

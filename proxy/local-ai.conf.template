@@ -52,3 +52,10 @@ server {
     server_name tts.localhost ~^tts\..+;
     location / { proxy_pass http://host.docker.internal:8093; }
 }
+
+# ── TRELLIS — Image-to-3D Generation ─────────────────────────────────────────
+server {
+    listen      80;
+    server_name trellis.localhost ~^trellis\..+;
+    location / { proxy_pass http://host.docker.internal:8094; }
+}

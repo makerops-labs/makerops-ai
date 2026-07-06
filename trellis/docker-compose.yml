@@ -1,0 +1,58 @@
+# trellis — Image-to-3D generation (microsoft/TRELLIS-image-large, 1.2B)
+# Project name: trellis  (managed by start.sh / stop.sh)
+#
+# Exposes:
+#   8094/tcp — FastAPI job server: POST /generate, GET /jobs/<id>,
+#              GET /jobs/<id>/model.glb, GET /healthz
+#
+# Consumed by mcp-tools (trellis domain → studio agent). Requires the
+# NVIDIA Container Toolkit. A generation needs most of the 16 GB card —
+# this service is start-on-demand: run start.sh when 3D work is planned,
+# stop.sh after. The pipeline additionally lazy-loads/unloads inside the
+# container (TRELLIS_IDLE_UNLOAD_S), so an idle running container holds
+# no VRAM.
+
+services:
+  trellis:
+    build:
+      context: .
+      # Host networking during build: on WSL2 the host resolver
+      # (10.255.255.254) is unreachable from bridge networks, which breaks
+      # package downloads in build containers.
+      network: host
+    container_name: trellis
+    # WSL2 quirk: the host resolver is unreachable from bridge networks —
+    # explicit resolvers so first-run model downloads resolve.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    environment:
+      # Model + torch.hub (DINOv2) + rembg caches live on the host so
+      # restarts don't re-download ~5 GB.
+      HF_HOME: /data/hf
+      TORCH_HOME: /data/torch
+      U2NET_HOME: /data/u2net
+      TRELLIS_DATA_DIR: /data
+    volumes:
+      - ${TRELLIS_DATA_PATH:-./data}:/data
+      # Serving code is bind-mounted — edit + restart, no rebuild.
+      - ./serve.py:/app/serve.py:ro
+    ports:
+      - "${TRELLIS_PORT_HOST:-8094}:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped

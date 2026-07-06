@@ -17,6 +17,7 @@ makerops-core**, and keep any core-side reference local-only (core's
 | searxng | 8098 | Private metasearch; JSON API backs web tools. |
 | mcp-tools | 8099 | FastMCP tool server; per-domain endpoints `/mcp/<domain>/`; human write-approvals at `/approvals`; doc tree at `/context` (see below). |
 | speech | 8091 STT / 8093 TTS | speaches (whisper) + Kokoro, CPU-only on purpose. |
+| trellis | 8094 | Image-to-3D (TRELLIS-image-large → GLB). GPU-heavy, start-on-demand only; serve.py is bind-mounted (restart to reload). Backs the `trellis` tool domain. |
 
 Hermes Agent is host-level (not Docker): per-project memory profiles under
 `~/.hermes/profiles/` — see `docs/hermes-setup.md`; never share a profile
@@ -83,3 +84,6 @@ RTX 4070 Ti SUPER 16 GB VRAM; WSL2 capped at 24 GB RAM (`.wslconfig`).
 Models >16 GB (both coding models) partially offload to RAM — if a load is
 OOM-killed (`signal: killed` during tensor load), free RAM or raise the cap.
 Speech stays CPU-only to protect VRAM. Flash attention is on in Ollama.
+TRELLIS wants most of the 16 GB during a generation — run it while the LLMs
+are idle (or accept slow WSL shared-memory spill); it unloads its pipeline
+after 10 min idle and the whole service is start-on-demand.

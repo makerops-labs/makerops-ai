@@ -11,7 +11,7 @@ It ships with seven starter agents (models follow the lead-per-domain hierarchy 
 | `coder` | `qwen3.6:35b` | Writes and executes Python for data work and programming tasks |
 | `ops` | `qwen3.5:9b-64k` | Operates the business stack via mcp-tools (wiki, inventory, projects, automation, helpdesk) |
 | `writer` | `qwen3.5:9b-64k` | Written deliverables: docs, reports, summaries, marketing copy; publishes durable docs to Outline |
-| `studio` | `qwen3.5:9b-64k` | Media assets: images (ComfyUI/FLUX), diagrams (draw.io), speech audio (Kokoro TTS). No video |
+| `studio` | `qwen3.5:9b-64k` | Media assets: images (ComfyUI/FLUX), diagrams (draw.io), speech audio (Kokoro TTS), image→3D models (TRELLIS). No video |
 | `auditor` | reviewer pool | Independent multi-model review of finished work (see below) |
 
 - **Docs:** <https://huggingface.co/docs/smolagents>
@@ -138,8 +138,9 @@ Agents load their tools from the shared MCP tool server
   `PENDING APPROVAL #id` and the ops agent reports it instead of retrying.
 - **writer** uses the `outline` domain to publish durable deliverables
   (collection "Agent Deliverables", dated names, job-id footer).
-- **studio** merges `comfyui`, `drawio`, and `speech` — images, diagrams,
-  and TTS audio. Video is out of scope and declared as such.
+- **studio** merges `comfyui`, `drawio`, `speech`, and `trellis` — images,
+  diagrams, TTS audio, and image→3D GLB models. Video is out of scope and
+  declared as such.
 - **manager** holds the `agents` domain (`agent_create`, `agent_list`,
   `agent_read`) so it can scaffold new specialist agents.
 
@@ -240,7 +241,7 @@ Browser                              Open WebUI / any MCP client
                 │     ├─► coder  (qwen3.6:35b — sandboxed Python execution)
                 │     ├─► ops  (qwen3.5:9b-64k — wiki/inventory/projects/automation/helpdesk)
                 │     ├─► writer  (qwen3.5:9b-64k — docs/summaries/copy → Outline)
-                │     ├─► studio  (qwen3.5:9b-64k — images/diagrams/TTS audio)
+                │     ├─► studio  (qwen3.5:9b-64k — images/diagrams/TTS audio/3D models)
                 │     ├─► auditor  (reviewer pool — multi-model second opinions)
                 │     └─► agents/custom/*  (auto-discovered custom agents)
                 ├─► host.docker.internal:11434/v1  → Ollama OpenAI-compatible API
