@@ -64,6 +64,32 @@ reviewer. On a switch update: `SMOLAGENTS_*_MODEL_ID` env vars,
   run in segments resuming from `jobs/<id>/workspace/synopsis.md`. Adding
   the volume needed `docker compose -p mcp-tools up -d` (recreate) —
   remember `restart` never applies compose/volume/.env changes.
+- **Project workspaces are a different thing from the job queue above**:
+  `~/workspace/<project-name>` directories are user-created **siblings of
+  `~/workspace/makerops/`** (never inside it), registered and read/written
+  via mcp-tools' `project` domain (`tools/project.py`). Reads span all of
+  `~/workspace` (prior-art browsing, including this stack's own source);
+  writes are confined to one registered project and execute immediately
+  (notify tier). `~/workspace/makerops/` itself can never be registered as
+  a write target — that subtree stays governed by `propose_code_change`/
+  `redeploy` instead. The mount (`WORKSPACES_ROOT` → `/workspaces`) lives
+  only in mcp-tools, never smolagents, so even the `manager`/`coder`
+  `CodeAgent`s reach it only through the `project_*` tools, not raw
+  `pathlib`. Every registered project gets a `PROJECT_CONTEXT.md` seeded at
+  its root — the always-read-first orientation doc for a stateless agent
+  resuming the project later. Commands can also be run against a
+  registered project (`project_run_command`) inside an ephemeral,
+  resource-capped, socket-less container launched by `sandbox/` — a second
+  Docker-socket-holding service alongside `redeploy` — network access is
+  allowed (bridge), but the ephemeral container never gets the Docker
+  socket and only that one project directory is mounted. WSL2 quirk that
+  bit us building it: docker-py's `containers.run()` needs its own explicit
+  `dns=[...]` (same broken-bridge-resolver issue as every build in this
+  repo, but this one isn't a compose file so there's no `dns:` key to
+  inherit from). Also: the runtime image's Debian base rejects bare `pip
+  install` (PEP 668) unless `PIP_BREAK_SYSTEM_PACKAGES=1` is set in the
+  container's env — it's a throwaway container with no system Python to
+  protect, so this is set unconditionally.
 
 ## Dependencies on makerops-core (sibling checkout `../makerops-core`)
 

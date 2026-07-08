@@ -74,6 +74,20 @@ REPO_ROOT = Path(_env("REPO_ROOT", "/repo"))
 REDEPLOY_URL = _env("REDEPLOY_URL", "http://host.docker.internal:8101")
 REDEPLOY_TOKEN = _env("REDEPLOY_TOKEN")
 
+# Durable per-project directories the user creates by hand under
+# ~/workspace/ (siblings of ~/workspace/makerops/). Read-write, mounted only
+# into mcp-tools — never into smolagents, so CodeAgents reach this only via
+# the project_* tools, not raw pathlib. See tools/project.py.
+PROJECTS_ROOT = Path(_env("PROJECTS_ROOT", "/workspaces"))
+
+# Sandboxed command execution: separate service (sandbox/) with its own
+# Docker-socket access, launching resource-capped ephemeral containers with
+# exactly one project directory mounted — never the socket itself. See
+# tools/project.py's project_run_command and sandbox/README.md.
+SANDBOX_URL = _env("SANDBOX_URL", "http://host.docker.internal:8102")
+SANDBOX_TOKEN = _env("SANDBOX_TOKEN")
+SANDBOX_MAX_TIMEOUT_S = int(_env("SANDBOX_MAX_TIMEOUT_S", "600"))
+
 # ── Write policy ──────────────────────────────────────────────────────────────
 APPROVALS_TOKEN = _env("APPROVALS_TOKEN")
 APPROVAL_NOTIFY_WEBHOOK = _env("APPROVAL_NOTIFY_WEBHOOK")

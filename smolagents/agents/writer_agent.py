@@ -11,7 +11,7 @@ from .tools import get_domains_tools
 
 
 def build_writer_agent() -> ToolCallingAgent:
-    tools = get_domains_tools("outline")
+    tools = get_domains_tools("outline", "project")
     return ToolCallingAgent(
         tools=tools,
         model=get_model("general"),
@@ -49,7 +49,14 @@ def build_writer_agent() -> ToolCallingAgent:
             "exactly that — never invent a permissions or configuration "
             "excuse. Report the exact URL a tool call returns for any "
             "deliverable's location — never guess or construct a URL "
-            "yourself."
+            "yourself. If the job references a project workspace (a "
+            "durable directory under ~/workspace/<project>), write docs, "
+            "READMEs, or reports there via project_write_file/"
+            "project_edit_file instead of (or alongside) Outline, and "
+            "report the actual file path — never a guessed one. You are "
+            "typically the one who drafts and keeps PROJECT_CONTEXT.md and "
+            "its linked docs/*.md current for a project, the same way you "
+            "already own Outline documents."
         ),
         max_steps=8,
     )

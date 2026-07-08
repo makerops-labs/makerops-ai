@@ -24,7 +24,7 @@ from .maintainer_agent import build_maintainer_agent
 from .model import get_model
 from .ops_agent import build_ops_agent
 from .studio_agent import build_studio_agent
-from .tools import get_domain_tools
+from .tools import get_domains_tools
 from .web_agent import build_web_agent
 from .writer_agent import build_writer_agent
 
@@ -69,12 +69,40 @@ business and creative tasks for one user. Follow this procedure:
    natural phase boundary, or when the conversation is getting long,
    update the synopsis and call final_answer with status "continuation"
    and a "next_steps" list — a fresh session resumes from the synopsis.
+5b. PROJECT ORIENTATION. This is separate from your per-job working-memory
+    workspace above: a project is a durable, user-assigned directory under
+    ~/workspace/ (see the brief's "project" field) where an already-approved
+    solution's code and docs actually live, across many jobs, not just this
+    one segment. If a job references a project, your FIRST action is
+    project_read_file(project, "PROJECT_CONTEXT.md") — it always exists once
+    a project is registered — to load its current state, architecture, and
+    pointers to detail docs before planning anything. Use project_glob /
+    project_grep / project_list_dir to survey the project (and sibling
+    directories under ~/workspace as prior art) before writing. Update
+    PROJECT_CONTEXT.md via project_write_file/project_edit_file whenever the
+    project's state changes meaningfully — new component, architecture
+    decision, milestone — and always right before a review checkpoint, so
+    the next job (possibly a different session) picks up accurate context.
+    Keep it concise; park bulky detail in linked files under docs/, the same
+    discipline as synopsis.md.
 6. DELIVER. Durable deliverables (project docs, reports, knowledge-base
    articles) are published to the Outline wiki by writer or ops:
    collection 'Agent Deliverables', document name
    'YYYY-MM-DD <task title> — <deliverable name>', footer
    '*Produced by makerops agents — job <id>, audited: yes/no.*'.
-   Transient answers go directly in the report.
+   Transient answers go directly in the report. If the job references a
+   project (5b), its code/doc deliverables live there instead — write via
+   project_write_file/project_edit_file (never raw pathlib, which cannot
+   reach it; project_register once first if not yet registered — the
+   directory must already exist). Before marking a project job's status
+   "review" or reporting it done, have coder run the project's test
+   suite/linter via project_run_command if one exists — an isolated,
+   resource-capped, network-enabled container with only that project
+   mounted, no other files or Docker access reachable from inside — and
+   note the ACTUAL result (not "I wrote the code") in the report and
+   PROJECT_CONTEXT.md. Reference the project path in build_report's
+   deliverables (type="file") and attention (e.g. "Ready for review at
+   ~/workspace/<project>") at the review checkpoint.
 7. REPORT. Always finish by calling build_report(...) to construct the
    report, then final_answer(report) in the SAME code block — do not
    hand-write the report as a nested dict/list literal, that is where
@@ -222,12 +250,21 @@ def _build_custom_agents() -> list:
 _MANAGER_AGENT_TOOLS = ("agent_list", "agent_read", "agent_create",
                         "propose_code_change", "tools_help")
 
+# Durable project-workspace tools (see tools/project.py) — reading/writing a
+# user-assigned directory under ~/workspace/, distinct from the per-job
+# working-memory workspace in additional_args.
+_MANAGER_PROJECT_TOOLS = ("project_register", "project_list",
+                          "project_read_file", "project_list_dir",
+                          "project_glob", "project_grep",
+                          "project_write_file", "project_edit_file",
+                          "project_set_status", "project_run_command")
+
 
 def build_manager_agent() -> CodeAgent:
     return CodeAgent(
         tools=[build_report, build_deliverable] +
-              [t for t in get_domain_tools("agents")
-               if t.name in _MANAGER_AGENT_TOOLS],
+              [t for t in get_domains_tools("agents", "project")
+               if t.name in _MANAGER_AGENT_TOOLS + _MANAGER_PROJECT_TOOLS],
         model=get_model("general"),
         managed_agents=[build_web_agent(), build_coding_agent(),
                         build_ops_agent(), build_writer_agent(),

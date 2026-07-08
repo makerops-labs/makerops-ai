@@ -119,7 +119,18 @@ Agents that combine several domains must merge tools with
 smolagents `CodeAgent`s execute model-written Python. The stance here:
 
 - **In the container** (normal service use): the default local executor is fine — the container is the sandbox. Code mounts are read-only, only `/data` is writable, and the only network dependency is Ollama. The Docker socket is deliberately **not** mounted.
-- **On the host venv**: the agents keep a minimal `additional_authorized_imports` list (no `os`, `subprocess`, or `shutil`), and smolagents' interpreter blocks unauthorized imports. For untrusted or long-autonomy runs from the host, pass `executor_type="docker"` to `CodeAgent` so generated code runs in a throwaway container instead.
+- **On the host venv**: the agents keep a minimal `additional_authorized_imports` list (no `os`, `subprocess`, or `shutil`), and smolagents' interpreter blocks unauthorized imports. For untrusted or long-autonomy runs from the host, pass `executor_type="docker"` to `CodeAgent` so generated code runs in a throwaway container instead. (Not used here — see below.)
+
+This is a different containment mechanism from the one backing
+`project_run_command`: that's a **separate service** ([sandbox/](../sandbox/)),
+not this CodeAgent-interpreter sandboxing, and not smolagents' own
+`DockerExecutor` either (that's a Jupyter-kernel-over-websocket executor
+for Python, needs the `docker` extra this image doesn't install, and would
+require giving *this* container Docker socket access — exactly what the
+bullet above rules out). `project_run_command` runs real shell commands in
+throwaway, resource-capped containers with one project directory mounted,
+launched by `sandbox/` (which holds the socket instead), never by
+smolagents itself.
 
 ---
 
@@ -138,12 +149,24 @@ Agents load their tools from the shared MCP tool server
   [mcp-tools README](../mcp-tools/README.md) — a gated write returns
   `PENDING APPROVAL #id` and the ops agent reports it instead of retrying.
 - **writer** uses the `outline` domain to publish durable deliverables
-  (collection "Agent Deliverables", dated names, job-id footer).
+  (collection "Agent Deliverables", dated names, job-id footer), plus the
+  `project` domain to write docs/READMEs directly into a project workspace
+  and to draft/keep its `PROJECT_CONTEXT.md` current.
 - **studio** merges `comfyui`, `drawio`, `speech`, and `trellis` — images,
   diagrams, TTS audio, and image→3D GLB models. Video is out of scope and
   declared as such.
 - **manager** holds the `agents` domain (`agent_create`, `agent_list`,
-  `agent_read`) so it can scaffold new specialist agents.
+  `agent_read`, `propose_code_change`) so it can scaffold new specialist
+  agents and propose stack self-improvements, plus the `project` domain
+  (see "Project workspaces" below) for reading/writing a user-assigned
+  project directory and running commands in it (`project_run_command`) —
+  it has `coder` do this before marking a project job "review."
+- **coder** holds only the `project` domain — its own output otherwise goes
+  through its sandboxed Python interpreter (`pathlib`, scoped to
+  `config.DATA_DIR`), which cannot reach a project directory at all; that's
+  the point (see "Project workspaces" below). It also uses
+  `project_run_command` to actually run a project's tests/linter/build
+  rather than assume they pass.
 
 ### Orchestration (manager procedure)
 
@@ -183,6 +206,31 @@ starts a fresh run from the brief + synopsis. `SMOLAGENTS_MAX_SEGMENTS`
 `needs_attention` with the synopsis as the report. The worker also writes
 `jobs/roster.json` at startup (live roster consumed by `agent_list`) and
 flips any job stuck in `running` to `failed` after a crash/restart.
+
+### Project workspaces
+
+Distinct from the per-job `jobs/<id>/workspace/` scratch dir above: a
+**project** is a durable directory under `~/workspace/` that *you* create
+and register (via the mcp-tools `project` domain — see
+[mcp-tools/README.md](../mcp-tools/README.md) "Project workspaces"), where
+an already-approved solution's code and docs live across many jobs, not
+just one segment. Pass `project="<name>"` to `agent_dispatch` to target it;
+`jobs.py::_format_task` then instructs the manager to read
+`PROJECT_CONTEXT.md` first (always present once registered), survey the
+project and any sibling directories as prior art with `project_glob`/
+`project_grep`, and write via `project_write_file`/`project_edit_file` —
+never raw `pathlib`, since the mount lives only in the mcp-tools container,
+not here. `manager.py::_PROCEDURE` step 5b (PROJECT ORIENTATION) and the
+DELIVER step encode this; reads span all of `~/workspace`, writes stay
+confined to the one registered project, and writes execute immediately
+(notify tier by default).
+
+Before marking a project job "review" or done, the DELIVER step also has
+`coder` actually run the project's test suite/linter via
+`project_run_command` — an isolated, resource-capped, ephemeral container
+with only that project mounted (network included, for installs), launched
+by the separate [sandbox](../sandbox/) service, never smolagents itself —
+and report the real result rather than assume the code works.
 
 ### Multi-model review (auditor)
 

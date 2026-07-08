@@ -40,6 +40,11 @@ services:
       # + restart happens in the separate redeploy service, which owns
       # Docker socket access; mcp-tools only computes and stores the diff.
       - ${MAKEROPS_AI_ROOT:-..}:/repo
+      # Durable per-project directories (see WORKSPACES_ROOT in .env) — rw,
+      # for the project domain only (read anywhere under it; writes confined
+      # to a specific registered project). Deliberately NOT mounted into
+      # smolagents (see smolagents/README.md "Executor safety").
+      - ${WORKSPACES_ROOT:?set WORKSPACES_ROOT to your absolute ~/workspace path}:/workspaces
       # Code is bind-mounted so edits only need a container restart;
       # rebuild the image only when dependencies change.
       - ./server.py:/app/server.py:ro

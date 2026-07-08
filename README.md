@@ -56,7 +56,8 @@ bottom; each phase is independently useful. In outline:
 | MCP Tools | [8099](http://localhost:8099/healthz) | Shared MCP tool server — read/write tools for the business stack with human write-approvals |
 | [Speech](speech/) | [8091](http://localhost:8091) STT / [8093](http://localhost:8093) TTS | speaches (faster-whisper) speech-to-text + Kokoro text-to-speech, CPU-only |
 | [TRELLIS](trellis/) | [8094](http://localhost:8094/healthz) | Image-to-3D generation (GLB) — GPU-heavy, start-on-demand only |
-| [redeploy](redeploy/) | [8101](http://localhost:8101/healthz) | Docker-socket-scoped restart proxy — the only service with Docker access, used to deploy approved self-improvement code changes |
+| [redeploy](redeploy/) | [8101](http://localhost:8101/healthz) | Docker-socket-scoped restart proxy — deploys approved self-improvement code changes |
+| [sandbox](sandbox/) | [8102](http://localhost:8102/healthz) | Docker-socket-scoped command runner — sandboxed shell execution (tests/lint/build/git) confined to one project directory, no host/Docker access from inside |
 
 There is also one host-level (non-Docker) component:
 [Hermes Agent](https://hermes-agent.nousresearch.com), a terminal agent with
@@ -166,6 +167,47 @@ Trigger a review on demand by asking any dispatch-capable chat (e.g. Task
 Dispatcher) to "review the stack's recent performance and propose
 improvements," or set up the optional weekly n8n cron workflow described
 in the checklist.
+
+### Project workspaces
+
+Beyond improving itself, the stack can research a problem, propose a
+solution, and — once you've reviewed the proposal and created a directory
+for it — implement the code and docs there. This is the `project` MCP
+domain (see [mcp-tools/README.md](mcp-tools/README.md) "Project
+workspaces"): durable directories that are **siblings of `makerops/`**
+under `~/workspace/` (e.g. `~/workspace/my-app`), never nested inside
+`makerops-ai` or `makerops-core`.
+
+- **You create the directory by hand** — that's the authorization to write
+  there; the agents never create it for you. Register it with
+  `project_register`, then dispatch work with `agent_dispatch(...,
+  project="my-app")`.
+- **Reads span all of `~/workspace`** (sibling projects, even this stack's
+  own source) so agents can use existing work as prior art; **writes stay
+  confined** to the one project you registered for that job.
+- **Notify tier by default** — writes execute immediately, since creating
+  the directory was already your approval; audit-logged and
+  webhook-notified like everything else, not gated per file.
+- Every registered project gets a `PROJECT_CONTEXT.md` seeded at its root —
+  current state, architecture, and pointers to detail docs — so a
+  stateless agent picking the project back up later (a different job, a
+  different day) isn't starting from nothing.
+
+#### Sandboxed command execution
+
+File I/O alone can't verify anything — an agent can write a test and claim
+it passes without running it. `project_run_command` (also in the `project`
+domain) runs a bounded shell command (test runner, linter, build, `git`,
+package install) inside an isolated, resource-capped, ephemeral container
+with exactly one registered project directory mounted — nothing else, and
+no Docker access from inside it. See [sandbox/README.md](sandbox/README.md)
+for the full containment model (resource limits, non-root user, network
+policy). Like file writes, this executes immediately (notify tier) — the
+sandbox itself is the safety boundary, not a human-approval step, since
+that would break the "run it, read the output, iterate" loop this exists
+for. `coder` and `manager` both use it; before reporting a project job
+done, the manager has `coder` actually run the test suite rather than
+assume the code works.
 
 ### Startup order
 

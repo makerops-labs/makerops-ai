@@ -65,6 +65,7 @@ static baseline block ([openwebui/contexts/_baseline.md](../openwebui/contexts/_
 | `trellis` | `trellis_image_to_3d` (image → GLB → `/files/models/`) | trellis (8094) running — GPU, start-on-demand |
 | `agents` | `agent_list`, `agent_dispatch`, `agent_job_status`, `agent_job_result`, `agent_jobs_list`, `agent_job_history`, `agent_read`, `agent_create`, `propose_code_change` | smolagents running (for dispatch) |
 | `approvals` | `approval_status`, `list_pending_approvals`, `agent_audit_history` (read-only for models) | — |
+| `project` | `project_read_file`, `project_list_dir`, `project_glob`, `project_grep` (read anywhere under `~/workspace`); `project_register`, `project_write_file`, `project_edit_file`, `project_set_status`, `project_list`, `project_run_command` (write/execute, confined to a registered project) | `WORKSPACES_ROOT` mounted (+ `sandbox` running for `project_run_command`) |
 
 `fetch_url` reviews any file type it can extract information from: web pages
 (→ markdown), JSON/XML/CSV/source (as text), PDF/docx/xlsx/pptx/epub (text
@@ -158,6 +159,54 @@ The `agents` domain is the bridge to the smolagents team:
   independently so that's not a problem. A failed post-restart health
   check triggers an automatic revert to the prior content and another
   restart — nothing is left broken silently.
+
+## Project workspaces
+
+The `project` domain gives agents access to durable, user-assigned project
+directories — distinct from the ephemeral per-job working-memory workspace
+described above (that one lives under `smolagents/data/smolagents/jobs/<id>/
+workspace/` and is gone once the job finishes; a project persists across many
+jobs and lives on disk under `~/workspace/`).
+
+- **Mount**: `WORKSPACES_ROOT` (your absolute `~/workspace` path) is
+  bind-mounted read-write at `/workspaces`, in **mcp-tools only** — never
+  into smolagents, so even the code-executing `manager`/`coder` agents can
+  only reach it through these tools, not raw `pathlib`.
+- **Reads are broad**: `project_read_file`, `project_list_dir`,
+  `project_glob`, `project_grep` work anywhere under `~/workspace`, including
+  directories nobody has registered — sibling projects, or this stack's own
+  source — so agents can use them as prior-art reference. `.env`/`.env.*`
+  files are blocked everywhere, regardless of registration.
+- **Writes are narrow**: `project_write_file`/`project_edit_file` only work
+  inside a project registered with `project_register`, which requires the
+  directory to already exist under `~/workspace/` — **you create it by
+  hand**; that's the authorization to write there. `~/workspace/makerops/`
+  itself can never be registered — that subtree stays governed by
+  `propose_code_change`/`redeploy` above, not this domain.
+- **Notify tier by default**: writes execute immediately (via
+  `APPROVAL_GATE_EXEMPT=project` in `.env.example`) since creating/assigning
+  the directory is itself the approval. Tighten a specific project later
+  with `APPROVAL_FORCE_GATE=project.project_write_file` if you ever want to.
+- **`PROJECT_CONTEXT.md`**: every registered project gets a starter copy
+  seeded at its root automatically (never overwritten if one already
+  exists). It's the always-read-first orientation doc — current state, a
+  short architecture summary, and pointers to detail docs — so a stateless
+  agent picking up the project later (possibly a different job entirely)
+  isn't starting from nothing. The manager reads it first and keeps it
+  current as the project's state changes; `writer` typically drafts/updates
+  its prose, the same way it owns Outline documents.
+- **Dispatching work at a project**: pass `project="<name>"` to
+  `agent_dispatch` once you've reviewed a proposal and created the
+  directory — the manager and `coder`/`writer` pick it up from there.
+- **Command execution**: `project_run_command` runs a shell command (test
+  runner, linter, build, `git`, package install) inside an isolated,
+  resource-capped, ephemeral container with exactly one registered
+  project's directory mounted — nothing else, no Docker access from
+  inside, network allowed (bridge). It's a separate Docker-socket-scoped
+  service ([sandbox/](../sandbox/), alongside `redeploy`), not mcp-tools
+  itself — see its README for the full containment model. Notify tier,
+  same as the other writes; `manager`/`coder` hold it, `writer`/`ops`/
+  `studio` don't.
 
 ## Connecting clients
 

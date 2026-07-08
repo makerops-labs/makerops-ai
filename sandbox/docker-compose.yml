@@ -1,0 +1,46 @@
+# sandbox — Docker-socket-scoped sandboxed command execution
+# Project name: sandbox  (managed by start.sh / stop.sh)
+#
+# Exposes:
+#   8102/tcp — POST /run {project, command, timeout_s}, GET /healthz
+#
+# The second (and only other) service in this stack with Docker socket
+# access, alongside redeploy. Deliberately narrow: one endpoint, launches
+# throwaway resource-capped containers with exactly one registered project
+# directory mounted — nothing else, and the ephemeral containers themselves
+# NEVER get the Docker socket. Called by mcp-tools' project_run_command
+# tool (project domain) — mcp-tools itself never touches Docker directly.
+# See docs/ai-setup-checklist.md "Sandboxed command execution" and the
+# root README.
+
+services:
+  sandbox:
+    build:
+      context: .
+      # WSL2: the host resolver is unreachable from bridge networks during
+      # build, breaking package downloads.
+      network: host
+    container_name: sandbox
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Deliberately NO /workspaces mount here. WORKSPACES_ROOT (below) is
+      # an absolute HOST path passed as a plain string; Docker's daemon
+      # resolves bind-mount sources for the containers THIS service spawns
+      # against the host filesystem directly, regardless of this
+      # container's own mount namespace — see main.py's module docstring.
+      # Code is bind-mounted so edits only need a container restart.
+      - ./main.py:/app/main.py:ro
+    ports:
+      - "${SANDBOX_PORT_HOST:-8102}:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

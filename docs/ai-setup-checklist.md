@@ -248,6 +248,69 @@ same as any other gated write. See the root [README.md](../README.md)
       restart proves the change *runs*, not that it's *correct*; that
       judgment is what your review is for.
 
+## 5f. Project workspaces
+
+The stack can implement an already-approved solution's code and docs inside
+a directory **you** create — see the root [README.md](../README.md)
+"Project workspaces" for the concept; this is the one-time setup.
+
+- [ ] Set `WORKSPACES_ROOT` in `mcp-tools/.env` to your absolute `~/workspace`
+      path (project directories are its direct children, siblings of
+      `~/workspace/makerops/` — not inside it). Then `cd mcp-tools && docker
+      compose -p mcp-tools up -d` (recreate — new volume mount, a plain
+      `restart` won't pick it up).
+- [ ] Verify the mount: `docker exec mcp-tools ls /workspaces` should list
+      your real `~/workspace` sibling directories.
+- [ ] **Dry-run a prior-art read**: ask a dispatch-capable chat to list an
+      existing sibling directory under `~/workspace` (one you never
+      registered) — confirm reads work without any registration step.
+- [ ] Create a real (or throwaway) directory, e.g. `mkdir ~/workspace/test-app`.
+- [ ] **Dry-run registration + a write**: ask a model to call
+      `project_register(project="test-app", ...)`, then write a file into
+      it. Confirm: the write executes immediately (notify tier, not
+      `PENDING APPROVAL`), the file lands on disk, and `PROJECT_CONTEXT.md`
+      was seeded automatically at the project root.
+- [ ] **Dry-run a full dispatch**: `agent_dispatch(..., project="test-app")`
+      for a small, concrete task. Expected sequence: the manager reads
+      `PROJECT_CONTEXT.md` first, delegates to `coder`/`writer` as needed,
+      the files land in `~/workspace/test-app/`, `PROJECT_CONTEXT.md` is
+      updated to reflect the new state, and the job's final report
+      references the project path.
+- [ ] Confirm registering `makerops` itself (or anything under
+      `~/workspace/makerops/`) is rejected — that subtree stays governed by
+      `propose_code_change`/`redeploy` (5e above), not this domain.
+
+## 5g. Sandboxed command execution
+
+The stack can run bounded shell commands (tests, linters, builds, `git`,
+package installs) confined to one registered project directory — see the
+root [README.md](../README.md) "Sandboxed command execution" for the
+concept; this is the one-time setup.
+
+- [ ] `cd sandbox && ./start.sh`. First run generates a random
+      `SANDBOX_TOKEN` and builds the ephemeral-container runtime image
+      (`runtime.Dockerfile`) — copy the token into `mcp-tools/.env`'s
+      `SANDBOX_TOKEN` (both sides must match), set `WORKSPACES_ROOT` in
+      `sandbox/.env` to the **same** absolute path as `mcp-tools/.env`'s,
+      then `cd ../mcp-tools && docker compose -p mcp-tools up -d` (recreate
+      — new env vars). Verify: `curl -s http://localhost:8102/healthz`.
+- [ ] **Dry-run a raw command**: register a test project (per 5f), then ask
+      a dispatch-capable chat to run something trivial in it via
+      `project_run_command` (e.g. `echo hi && ls`) — confirm it executes
+      immediately (notify tier) and the output comes back accurately.
+- [ ] **Dry-run isolation**: ask it to run `ls /var/run/docker.sock` and
+      `which docker` in the sandbox — both should fail; there is no Docker
+      access from inside a sandboxed command.
+- [ ] **Dry-run a real workflow**: ask it to write a small module with a
+      test, then actually run the test suite (`pip install pytest -q &&
+      python3 -m pytest -q`) via `project_run_command` and report the real
+      result — confirm the reported pass/fail matches what's really on
+      disk, not an assumption.
+- [ ] **Your ongoing responsibility**: this is notify-tier, not gated —
+      review what ran via the audit log (`/approvals` "Recent activity")
+      at your own pace, the same way you already do for other notify-tier
+      writes.
+
 ## 6. Write notifications (recommended)
 
 - [ ] In n8n, create a workflow: **Webhook** node (POST, path e.g.

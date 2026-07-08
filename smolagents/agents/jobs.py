@@ -111,10 +111,25 @@ def _format_task(job: dict, workspace: Path) -> str:
     if job.get("parent_job_id"):
         lines.append(f"This continues clarified job {job['parent_job_id']}.")
 
+    if brief.get("project"):
+        lines.append(
+            f"This job implements an already-approved solution in project "
+            f"'{brief['project']}' (a durable directory under ~/workspace/, "
+            f"NOT the per-job working-memory workspace below). FIRST call "
+            f"project_read_file('{brief['project']}', 'PROJECT_CONTEXT.md') "
+            f"to orient yourself — it always exists once a project is "
+            f"registered. Survey further with project_glob/project_grep/"
+            f"project_list_dir/project_read_file (including sibling "
+            f"directories under ~/workspace for prior art) before writing. "
+            f"Write via project_write_file/project_edit_file, and update "
+            f"PROJECT_CONTEXT.md and project_set_status as you progress.")
+
     lines.append(
         f"Your working-memory workspace directory is {workspace} "
         "(create files with pathlib). Keep synopsis.md there current per "
-        "your WORKING MEMORY procedure.")
+        "your WORKING MEMORY procedure. This is separate from the project "
+        "directory above, if any — synopsis.md is your own scratch memory "
+        "for this job, PROJECT_CONTEXT.md is the durable project record.")
     lines.append(
         "FIRST apply your VALIDATE step: if this brief is too vague to "
         "execute without guessing, answer needs_clarification immediately. "

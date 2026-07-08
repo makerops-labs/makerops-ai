@@ -31,7 +31,8 @@ required_env = None  # writes to the bind mount, no token
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]{2,30}$")
 _VALID_DOMAINS = ("web", "outline", "inventree", "plane", "n8n", "comfyui",
-                  "freescout", "drawio", "triggerdev", "speech", "approvals")
+                  "freescout", "drawio", "triggerdev", "speech", "approvals",
+                  "project")
 _CUSTOM_DIR = config.SMOLAGENTS_AGENTS_DIR / "custom"
 
 _TEMPLATE = string.Template('''"""$description
@@ -134,7 +135,7 @@ def agent_create(name: str, description: str, tool_domains: list[str],
     """WRITE ACTION — scaffolds a new smolagents agent module from a fixed
     template. name: snake_case, 3-31 chars. tool_domains: which MCP tool
     domains it gets (web, outline, inventree, plane, n8n, comfyui, freescout,
-    drawio, triggerdev, speech, approvals). model_role: 'general' or
+    drawio, triggerdev, speech, approvals, project). model_role: 'general' or
     'coding'. The file is created in the repo working tree for the user to
     review; the user is notified with a summary."""
     if not _NAME_RE.match(name):
@@ -188,7 +189,7 @@ def agent_dispatch(objective: str, deliverables: list[str],
                    resources: list[str] | None = None,
                    quality: str = "standard", audit: str = "auto",
                    urgency: str = "normal", context: str = "",
-                   parent_job_id: str = "") -> str:
+                   parent_job_id: str = "", project: str = "") -> str:
     """WRITE ACTION — queue a background task for the local agent team
     (manager + specialists: research, coding, business ops, writing, media
     creation). Returns 'JOB #<id> queued' immediately; the job runs for
@@ -199,7 +200,9 @@ def agent_dispatch(objective: str, deliverables: list[str],
     audit: 'auto' (manager audits high-stakes outputs), 'always', or
     'never'. quality: 'standard' or 'high'. If the job later reports
     needs_clarification, answer its questions and dispatch a NEW job with
-    parent_job_id set to the old id. The user is notified with a summary."""
+    parent_job_id set to the old id. project: name of a registered project
+    (see the project domain) if this job implements an already-approved
+    solution there. The user is notified with a summary."""
     if not objective.strip():
         return "ERROR: objective is empty — refine the task with the user first."
     deliverables = [d for d in (deliverables or []) if d.strip()]
@@ -216,7 +219,8 @@ def agent_dispatch(objective: str, deliverables: list[str],
     brief = {"objective": objective, "deliverables": deliverables,
              "audience": audience, "constraints": constraints or [],
              "resources": resources or [], "quality": quality,
-             "audit": audit, "urgency": urgency, "context": context}
+             "audit": audit, "urgency": urgency, "context": context,
+             "project": project}
     return policy.apply_policy(
         domain="agents", tool="agent_dispatch", action_kind="create",
         summary=f"Dispatch agent job: {objective[:100]}",

@@ -20,6 +20,7 @@ DOMAINS: dict[str, str | None] = {
     "drawio": None,
     "triggerdev": "TRIGGERDEV_SECRET_KEY",
     "agents": None,
+    "project": None,
     "speech": None,
     "trellis": None,
 }
