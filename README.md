@@ -56,6 +56,7 @@ bottom; each phase is independently useful. In outline:
 | MCP Tools | [8099](http://localhost:8099/healthz) | Shared MCP tool server — read/write tools for the business stack with human write-approvals |
 | [Speech](speech/) | [8091](http://localhost:8091) STT / [8093](http://localhost:8093) TTS | speaches (faster-whisper) speech-to-text + Kokoro text-to-speech, CPU-only |
 | [TRELLIS](trellis/) | [8094](http://localhost:8094/healthz) | Image-to-3D generation (GLB) — GPU-heavy, start-on-demand only |
+| [redeploy](redeploy/) | [8101](http://localhost:8101/healthz) | Docker-socket-scoped restart proxy — the only service with Docker access, used to deploy approved self-improvement code changes |
 
 There is also one host-level (non-Docker) component:
 [Hermes Agent](https://hermes-agent.nousresearch.com), a terminal agent with
@@ -126,6 +127,46 @@ a lead on domain benchmarks and fits the hardware, the old lead becomes a
 reviewer candidate and configs move on: `SMOLAGENTS_*_MODEL_ID` env vars, the
 context presets, and this table.
 
+### Self-improvement loop
+
+The stack can research, evaluate, and propose improvements to *itself* —
+the goal being that you provide direction and approvals, not legwork. The
+**maintainer** agent (part of the smolagents roster, see
+[smolagents/README.md](smolagents/README.md)) reviews recent job and audit
+history for concrete, evidenced failure patterns, researches fixes
+(delegating to web_researcher via the manager), writes an evaluation report
+to Outline's **AI** collection, and files one issue per proposed
+improvement in the **Stack Improvements** Plane project. For well-scoped
+proposals the manager has `coder` draft the actual file content and then
+proposes it itself with `propose_code_change`.
+
+**Every actual code change is a human-reviewed diff, no exceptions.**
+`propose_code_change` has no file-path restriction — gating on your
+approval at [mcp.localhost/approvals](http://mcp.localhost/approvals) is
+the safety boundary, not an allowlist. Nothing is written until you
+approve. On approval, the affected container (`smolagents` or `mcp-tools`
+— the only two with live-editable bind-mounted code) restarts
+automatically via the [redeploy](redeploy/) service; if it fails its
+health check, the change is **automatically reverted** and the container
+restarted again onto the known-good version — you find out what happened
+(healthy or reverted) through the same `/approvals` page and notification
+webhook you already use for everything else, not a new place to check.
+
+**Your responsibility**: pending code-change approvals expire after
+`APPROVAL_TTL_HOURS` (24h default) exactly like any other gated action —
+review them or they're simply lost, not queued forever. And a clean
+restart only proves the new code *runs*; it doesn't prove it's *correct*
+— that judgment call is why review exists. See
+[docs/ai-setup-checklist.md](docs/ai-setup-checklist.md) "Self-improvement
+loop" for the one-time setup and a full walkthrough of the expected
+process, and this file's Gotchas section below for failure modes to watch
+for.
+
+Trigger a review on demand by asking any dispatch-capable chat (e.g. Task
+Dispatcher) to "review the stack's recent performance and propose
+improvements," or set up the optional weekly n8n cron workflow described
+in the checklist.
+
 ### Startup order
 
 Ollama first (in makerops-core, with the models from the hierarchy table
@@ -177,7 +218,11 @@ Hard-won specifics — check here before deep-diving (core-side basics like
 - **Large-model OOM signature**: `llama-server process has terminated:
   signal: killed` during load = not enough free system RAM for the VRAM
   overflow. Free RAM or raise the WSL2 cap (24 GB works for the current
-  hierarchy on a 16 GB GPU).
+  hierarchy on a 16 GB GPU). **Check `docker ps` for a running `trellis`
+  container first** — its idle-unload only frees VRAM, the container still
+  holds ~5.4 GB of host RAM the whole time it's up, which is enough by
+  itself to starve a `qwen3.6:35b*` load. `trellis/stop.sh` before using
+  Coding Assistant, Task Dispatcher, or any 35b-class chat.
 - **A chat "has no tools"?** Tools attach per workspace-model, per-base-model
   (Admin Settings → Models), or per-chat (+ menu) — a bare-model thread has
   none. Old threads also bias the model toward its earlier "no tools"
@@ -206,6 +251,21 @@ Hard-won specifics — check here before deep-diving (core-side basics like
   OTLP collector via `OTEL_EXPORTER_OTLP_ENDPOINT` (smolagents `.env`).
 - **Never commit this repo's content into makerops-core** — see
   [CLAUDE.md](CLAUDE.md) and the Local integration section above.
+- **A `propose_code_change` diff is rejected before you ever see it** if
+  it's not valid Python syntax (`ast.parse` pre-check) — that only catches
+  syntax errors, not a syntactically valid but wrong change; review is
+  still what catches those.
+- **`redeploy.reverted` in `/approvals` means the file is already back to
+  its prior state** — the change was tried, failed its health check, and
+  was rolled back automatically. `git diff`/`git log` on the working tree
+  shows exactly what was attempted; there's nothing to manually undo.
+- **Approving a change to mcp-tools' own source restarts the process
+  handling your approval, mid-flow** — expected, and exactly why
+  `redeploy` is a separate service rather than mcp-tools restarting
+  itself: it keeps working (and reports the outcome) independent of
+  whether mcp-tools is reachable at that moment.
+- **Rejecting a proposal is cheap** — no retry pressure, no penalty;
+  `maintainer` files independent proposals each review cycle.
 
 ---
 

@@ -14,6 +14,12 @@ tuning you do in the UI.
    (Streamable HTTP)** → URL `http://host.docker.internal:8099/mcp/<domain>/`
    (one connection per domain the preset lists — per-domain scoping keeps
    tool lists short, which local models need).
+   **Set the API key field to any non-empty value, e.g. `no-key`.** Open
+   WebUI (≤0.10.2) sends `Authorization: Bearer <key>` even when the key is
+   empty; the resulting header value `Bearer` + trailing space is illegal
+   HTTP and the connection fails client-side with "Failed to connect to
+   MCP server" before any request is sent. mcp-tools ignores the key's
+   value.
 2. **Workspace → Models → New Model**:
    - **Name**: the preset's context name (e.g. "Research Assistant").
    - **Base model**: as listed in the preset.
@@ -22,13 +28,25 @@ tuning you do in the UI.
    - **Advanced params → Function calling: Native** (recommended for the
      qwen3.5/qwen3.6 leads; revert to Default if tool calls get unreliable
      on a given base model).
+   - **Capabilities: turn OFF Web Search, Builtin Tools, Code Interpreter,
+     Image Generation, and Terminal.** These are OpenWebUI's own native
+     tools (all on by default) and they collide with the MCP tools above —
+     e.g. its native `write_note` looks like a plausible way to "write
+     documentation" and the model will use it instead of
+     `outline_create_document`, silently writing to a private OpenWebUI
+     Note instead of the wiki, then invent a wrong explanation when asked
+     why the wiki wasn't updated. Leave `file_context`, `vision`,
+     `file_upload`, `citations`, and `status_updates` on — those don't
+     conflict. **Presets created before 2026-07-07 need this applied
+     retroactively** — open each one in Workspace → Models → Edit and
+     flip the five toggles off.
 3. Save. The context now appears in the chat model picker.
 
 ## Presets
 
 | Context | Base model | Tool domains |
 | --- | --- | --- |
-| [Task Dispatcher](task-dispatcher.md) | qwen3.6:35b-64k | agents, approvals |
+| [Task Dispatcher](task-dispatcher.md) | qwen3.6:35b-64k | agents, approvals, web, outline |
 | [Research Assistant](research-assistant.md) | qwen3.5:9b | web |
 | [Ops Assistant](ops-assistant.md) | qwen3.5:9b | outline, inventree, plane, n8n, freescout, triggerdev, approvals |
 | [Knowledge Curator](knowledge-curator.md) | qwen3.5:9b | outline, web, approvals |
@@ -63,9 +81,16 @@ too.
 
 Any preset can mention the agent workforce (it is in the baseline block),
 but only chats with the **agents** tool connection can actually dispatch.
-The **Task Dispatcher** preset is the dedicated front door: it interviews
-you into a concrete brief, queues the job with `agent_dispatch`, and tracks
-it. Jobs run in the smolagents container (one at a time — single-GPU model
-residency); reports land in the task inbox at `mcp.localhost/inbox` and can
-notify via `SMOLAGENTS_NOTIFY_WEBHOOK` (n8n). Durable deliverables go to
-the Outline collection **"Agent Deliverables"** (create it once in Outline).
+The **Task Dispatcher** preset is the dedicated front door — and more than
+that, a live liaison: it also carries direct **web** and **outline**
+connections so it can research and read/write the wiki itself, in the
+conversation, instead of making the user fetch context manually. It
+decides per request: do quick lookups, reads, and single-document wiki
+work live with the user, or refine a brief and hand long/multi-specialist
+work to `agent_dispatch` as a background job. Jobs run in the smolagents
+container (one at a time — single-GPU model residency); reports land in
+the task inbox at `mcp.localhost/inbox` and can notify via
+`SMOLAGENTS_NOTIFY_WEBHOOK` (n8n). Durable *background-job* deliverables
+go to the Outline collection **"Agent Deliverables"** (create it once in
+Outline); direct writes from the Task Dispatcher chat go wherever the
+user asks.

@@ -118,8 +118,8 @@ def _format_task(job: dict, workspace: Path) -> str:
     lines.append(
         "FIRST apply your VALIDATE step: if this brief is too vague to "
         "execute without guessing, answer needs_clarification immediately. "
-        "Always finish with final_answer(report) where report is the plain "
-        "Python dict from your REPORT procedure — no other text.")
+        "Always finish with build_report(...) and final_answer(report) — "
+        "no hand-written dict literals, no other text.")
 
     synopsis = workspace / "synopsis.md"
     if synopsis.is_file():
@@ -136,10 +136,11 @@ def _format_task(job: dict, workspace: Path) -> str:
 _SALVAGE_TASK = (
     "Your previous answer was not the required report dict. The work you "
     "already did above still counts — do not redo it. In ONE code block: "
-    "build report = {...} per your REPORT procedure describing that work "
-    "(put any text deliverables you produced, e.g. drafted copy, into "
-    'deliverables as {"type": "text", "title": ..., "location": "<the '
-    'full text>"}), then actually call final_answer(report). Nothing else.')
+    "call build_report(...) describing that work (put any text "
+    "deliverables you produced, e.g. drafted copy, into a "
+    'build_deliverable(type="text", title=..., location="<the full '
+    'text>")), then actually call final_answer(report). Nothing else — no '
+    "hand-written dict literals.")
 
 
 def _parse_report(manager, answer) -> dict:

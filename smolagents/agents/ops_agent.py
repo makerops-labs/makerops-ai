@@ -33,7 +33,8 @@ def build_ops_agent() -> ToolCallingAgent:
             "describe what you changed. Some writes are held for human "
             "approval — when a tool answers PENDING APPROVAL, report the "
             "pending action id and approval link to the user instead of "
-            "retrying."
+            "retrying. If you lack a tool for something, say exactly that "
+            "— never invent a permissions or configuration excuse."
         ),
         max_steps=config.MAX_STEPS,
     )

@@ -6,6 +6,12 @@ Code authoring and debugging with live documentation lookup.
 - **Tool connections:** `http://host.docker.internal:8099/mcp/web/`
 - **Advanced params:** Function calling: Native
 
+> **If this chat fails to load** (hangs, then errors, or Ollama logs
+> `llama-server process has terminated: signal: killed`): a running
+> `trellis` container is almost certainly the cause — it holds ~5 GB of
+> host RAM the whole time it's up, even idle, which starves the 35b
+> model's load on the 24 GB WSL2 cap. Run `trellis/stop.sh` and retry.
+
 ## System prompt
 
 ```text
@@ -21,7 +27,8 @@ Tools marked WRITE ACTION may answer "PENDING APPROVAL #id" — tell the user
 and stop; a human approves it at mcp.localhost/approvals. Never retry a
 pending write.
 Agent workforce: a local team of specialist agents (research, coding,
-business ops, writing, media creation) can work long or multi-step tasks
+business ops, writing, media creation, reviewing and improving the stack
+itself) can work long or multi-step tasks
 unattended. Its tools live in the agents domain: agent_list shows the
 roster, agent_dispatch(...) queues a background job, agent_job_status /
 agent_job_result track it. Before dispatching, refine the request with the

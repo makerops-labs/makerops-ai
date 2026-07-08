@@ -1,0 +1,51 @@
+# redeploy — Docker-socket-scoped restart proxy for the self-improvement loop
+# Project name: redeploy  (managed by start.sh / stop.sh)
+#
+# Exposes:
+#   8101/tcp — POST /restart {service, file_path, new_content, old_content},
+#              GET /healthz
+#
+# The ONLY service in this stack with Docker socket access. Deliberately
+# narrow: one endpoint, a hardcoded allowlist of restartable services
+# (smolagents, mcp-tools), everything else rejected. Called by mcp-tools'
+# propose_code_change tool after a human approves a code-change diff at
+# /approvals — mcp-tools itself never touches Docker. See
+# docs/ai-setup-checklist.md "Self-improvement loop" and the root README.
+
+services:
+  redeploy:
+    build:
+      context: .
+      # WSL2: the host resolver is unreachable from bridge networks during
+      # build, breaking package downloads.
+      network: host
+    container_name: redeploy
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    environment:
+      REPO_ROOT: /repo
+      AUDIT_LOG_PATH: /mcp-data/audit.jsonl
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Full repo, read-write: propose_code_change can target any file, so
+      # a failed change can be reverted regardless of which file it touched.
+      - ${MAKEROPS_AI_ROOT:-..}:/repo
+      # Same audit log mcp-tools/tools/policy.py writes to, so redeploy's
+      # own outcome entries appear in /approvals "Recent activity" with no
+      # changes to that page. Written independently of mcp-tools' own
+      # aliveness — redeploy may be restarting mcp-tools itself.
+      - ${MCPTOOLS_DATA_PATH:-../mcp-tools/data/mcp-tools}:/mcp-data
+      # Code is bind-mounted so edits only need a container restart.
+      - ./main.py:/app/main.py:ro
+    ports:
+      - "${REDEPLOY_PORT_HOST:-8101}:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

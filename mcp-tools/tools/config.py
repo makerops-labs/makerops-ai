@@ -22,6 +22,9 @@ FETCH_MAX_DOWNLOAD_BYTES = int(_env("FETCH_MAX_DOWNLOAD_BYTES", str(20 * 1024 * 
 # ── Service endpoints & tokens ────────────────────────────────────────────────
 OUTLINE_URL = _env("OUTLINE_URL", "http://host.docker.internal:3001")
 OUTLINE_API_TOKEN = _env("OUTLINE_API_TOKEN")
+# Browser-facing URL, for turning the relative "url" Outline's API returns
+# into a link a human (or a report) can actually follow.
+OUTLINE_PUBLIC_URL = _env("OUTLINE_PUBLIC_URL", "http://localhost:3001")
 
 INVENTREE_URL = _env("INVENTREE_URL", "http://host.docker.internal:8096")
 INVENTREE_API_TOKEN = _env("INVENTREE_API_TOKEN")
@@ -29,6 +32,9 @@ INVENTREE_API_TOKEN = _env("INVENTREE_API_TOKEN")
 PLANE_URL = _env("PLANE_URL", "http://host.docker.internal:8100")
 PLANE_API_KEY = _env("PLANE_API_KEY")
 PLANE_WORKSPACE_SLUG = _env("PLANE_WORKSPACE_SLUG")
+# Hand-maintained (Plane's public API has no workspace-list endpoint) — see
+# plane_list_workspaces.
+PLANE_WORKSPACE_SLUGS = [s.strip() for s in _env("PLANE_WORKSPACE_SLUGS").split(",") if s.strip()]
 
 N8N_URL = _env("N8N_URL", "http://host.docker.internal:5678")
 N8N_API_KEY = _env("N8N_API_KEY")
@@ -59,6 +65,14 @@ SMOLAGENTS_AGENTS_DIR = Path(_env("SMOLAGENTS_AGENTS_DIR", "/smolagents-agents")
 # Shared agent-job queue (smolagents/data/smolagents/jobs bind-mounted rw)
 # for agent_dispatch / job status / the /inbox page.
 AGENT_JOBS_DIR = Path(_env("AGENT_JOBS_DIR", "/agent-jobs"))
+
+# Self-improvement loop: full repo bind-mounted rw for propose_code_change to
+# read/diff any file (gating on approval is the safety boundary, not a path
+# allowlist); the actual write + container restart happens in the separate
+# redeploy service, which owns Docker socket access.
+REPO_ROOT = Path(_env("REPO_ROOT", "/repo"))
+REDEPLOY_URL = _env("REDEPLOY_URL", "http://host.docker.internal:8101")
+REDEPLOY_TOKEN = _env("REDEPLOY_TOKEN")
 
 # ── Write policy ──────────────────────────────────────────────────────────────
 APPROVALS_TOKEN = _env("APPROVALS_TOKEN")

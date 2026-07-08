@@ -2,7 +2,7 @@
 
 smolagents is Hugging Face's minimal agent framework. This service is both a **Python workspace** for authoring your own agents and a **Docker service** that runs them behind a Gradio chat UI — all backed by the local Ollama server, so nothing leaves the host.
 
-It ships with seven starter agents (models follow the lead-per-domain hierarchy in [README.md](../README.md)):
+It ships with eight starter agents (models follow the lead-per-domain hierarchy in [README.md](../README.md)):
 
 | Agent | Model | Role |
 | --- | --- | --- |
@@ -13,6 +13,7 @@ It ships with seven starter agents (models follow the lead-per-domain hierarchy 
 | `writer` | `qwen3.5:9b-64k` | Written deliverables: docs, reports, summaries, marketing copy; publishes durable docs to Outline |
 | `studio` | `qwen3.5:9b-64k` | Media assets: images (ComfyUI/FLUX), diagrams (draw.io), speech audio (Kokoro TTS), image→3D models (TRELLIS). No video |
 | `auditor` | reviewer pool | Independent multi-model review of finished work (see below) |
+| `maintainer` | `qwen3.5:9b-64k` | Self-improvement loop: reviews job/audit history, researches fixes, files Outline reports + Plane issues (see "Self-improvement loop") |
 
 - **Docs:** <https://huggingface.co/docs/smolagents>
 - **GitHub:** <https://github.com/huggingface/smolagents>
@@ -209,6 +210,34 @@ docker compose -p smolagents restart   # pick up new custom agents
 
 A custom module that fails to import is skipped with a log line, never fatal.
 
+### Self-improvement loop
+
+`maintainer` reviews the stack's own recent performance: `agent_job_history`
+and `agent_audit_history` (mcp-tools `agents`/`approvals` domains) surface
+job outcomes and write-action patterns from a recency window; it identifies
+concrete, evidenced failure patterns (never vague impressions — a pattern
+needs at least two instances or one clearly reproducible cause), writes an
+evaluation report to Outline's **AI** collection, and files one Plane issue
+per proposed improvement in the **Stack Improvements** project. It has no
+web access itself — external research it flags gets delegated to
+`web_researcher` by the manager, same as any other sub-task.
+
+For well-scoped proposals the manager has `coder` draft the new file
+content, then calls `propose_code_change` itself (the manager, not
+`maintainer`, holds this tool — every code change traces back to one
+place). This is a full `agents` domain tool, not a scaffold-only one:
+`file_path` can be *any* file in the repo (`.env` files and anything under
+`.git/` or a `data/` dir are hard-excluded — a confidentiality/integrity
+boundary, not a trust one), diffed against the current content and routed
+through the same gated approval flow as every other write in this stack.
+Approving it writes the file and — if it's under `smolagents/` or
+`mcp-tools/` — restarts the affected container via the separate
+[redeploy](../redeploy/) service (the only thing with Docker socket
+access); a failed health check triggers an automatic revert-and-restart
+onto the known-good version. See the root [README.md](../README.md)
+"Self-improvement loop" and [docs/ai-setup-checklist.md](../docs/ai-setup-checklist.md)
+"§5e" for the full walkthrough and one-time setup.
+
 ---
 
 ## Files
@@ -243,9 +272,14 @@ Browser                              Open WebUI / any MCP client
                 │     ├─► writer  (qwen3.5:9b-64k — docs/summaries/copy → Outline)
                 │     ├─► studio  (qwen3.5:9b-64k — images/diagrams/TTS audio/3D models)
                 │     ├─► auditor  (reviewer pool — multi-model second opinions)
+                │     ├─► maintainer  (qwen3.5:9b-64k — self-improvement: job/audit review → Outline + Plane)
                 │     └─► agents/custom/*  (auto-discovered custom agents)
                 ├─► host.docker.internal:11434/v1  → Ollama OpenAI-compatible API
                 ├─► host.docker.internal:8099/mcp/<domain>/  → mcp-tools (tool server)
+                │         │
+                │         └─► propose_code_change (manager only) ──► redeploy:8101
+                │                   writes /repo/<any file>, restarts the container,
+                │                   auto-reverts on a failed health check
                 └─► ./data/smolagents  → /data  (agent outputs, uploads, jobs/ queue
                                           — jobs/ is bind-mounted into mcp-tools)
 ```

@@ -88,7 +88,10 @@ domain should appear in `domains`).
       Connection** → type **MCP (Streamable HTTP)** → URL
       `http://host.docker.internal:8099/mcp/` (all tools) and/or per-domain
       URLs like `.../mcp/web/`, `.../mcp/outline/` (smaller lists — better
-      for gemma-class models).
+      for gemma-class models). **API key: any non-empty value (e.g.
+      `no-key`)** — an empty key makes Open WebUI (≤0.10.2) send an illegal
+      empty `Bearer` header (trailing space) and the connection fails
+      before any request is sent.
 - [ ] Test: in a chat with tools enabled, ask "search InvenTree for parts
       matching resistor" and watch `docker logs mcp-tools -f` for the call.
 - [ ] Enable RAG embeddings: **Admin Settings → Documents** → Embedding
@@ -197,6 +200,53 @@ domain should appear in `domains`).
       `data/smolagents/jobs/<id>/workspace/synopsis.md` as working memory
       and continues from it in a fresh context. Segment count shows on the
       inbox card; cap it with `SMOLAGENTS_MAX_SEGMENTS` (default 8).
+
+## 5e. Self-improvement loop
+
+The stack can review its own performance and propose code changes to
+itself — every actual change is a human-reviewed diff at `/approvals`,
+same as any other gated write. See the root [README.md](../README.md)
+"Self-improvement loop" for the concept; this is the one-time setup.
+
+- [ ] Start the redeploy service: `cd redeploy && ./start.sh`. First run
+      generates a random `REDEPLOY_TOKEN` and prints it — copy that exact
+      value into `mcp-tools/.env`'s `REDEPLOY_TOKEN` (both sides must
+      match), then `cd mcp-tools && docker compose -p mcp-tools up -d`
+      (recreate — `.env` and the new repo-root mount both need it).
+      Verify: `curl -s http://localhost:8101/healthz`.
+- [ ] Confirm the Outline **"AI"** collection exists (it's one of the
+      defaults) — `maintainer`'s evaluation reports land there. No
+      creation needed unless you deleted it.
+- [ ] Create a **"Stack Improvements"** project in your primary Plane
+      workspace (Projects → New Project) — `maintainer` files one issue
+      per proposed improvement there. Note the workspace slug if it isn't
+      already in `mcp-tools/.env`'s `PLANE_WORKSPACE_SLUGS`.
+- [ ] Optional recurring trigger: in n8n, a **Schedule Trigger** (weekly)
+      node → call `agent_dispatch` on the agents MCP endpoint with a fixed
+      brief ("Review the last 7 days of job and audit history; research
+      and propose improvements; file findings in Plane and Outline;
+      audit: always"). On-demand dispatch works fine without this —
+      set it up once you'd rather not remember to ask.
+- [ ] **Dry-run the full loop**: ask a dispatch-capable chat (Task
+      Dispatcher) to "review the stack's recent performance and propose
+      improvements." Expected sequence: `maintainer` pulls
+      `agent_job_history`/`agent_audit_history` → an Outline report
+      appears in the AI collection → zero or more Plane issues appear in
+      Stack Improvements (zero is a valid, honest outcome on a quiet
+      history — don't expect a proposal every time) → if a proposal is
+      well-scoped, a diff appears at `/approvals` referencing the Plane
+      issue.
+- [ ] **Dry-run a code-change approval**: propose (or wait for maintainer
+      to propose) something trivial, review the diff at `/approvals`,
+      approve it, and confirm: the file changed on disk, the correct
+      container restarted (`docker inspect <service> --format
+      '{{.State.StartedAt}}'` should be recent), and a `redeploy.completed`
+      entry appears in "Recent activity."
+- [ ] **Your ongoing responsibility**: pending code-change approvals
+      expire after `APPROVAL_TTL_HOURS` (24h default) like any other gated
+      action — review them or they're lost, not queued forever. A clean
+      restart proves the change *runs*, not that it's *correct*; that
+      judgment is what your review is for.
 
 ## 6. Write notifications (recommended)
 

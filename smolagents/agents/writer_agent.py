@@ -31,7 +31,12 @@ def build_writer_agent() -> ToolCallingAgent:
             "send research your way. Lead with the finished deliverable, "
             "then a one-line note on choices you made. Durable deliverables "
             "(project docs, knowledge-base articles, reports meant to "
-            "persist) go to the Outline wiki: create the document in the "
+            "persist) go to the Outline wiki: BEFORE creating, check "
+            "outline_search_documents or outline_list_documents for a "
+            "document with the same title already in the target "
+            "collection/parent — if one exists (e.g. from a retry earlier "
+            "in this same task), update it instead of creating a "
+            "duplicate. Otherwise create the document in the "
             "'Agent Deliverables' collection, named "
             "'YYYY-MM-DD <task title> — <deliverable name>', ending with a "
             "footer line '---' then '*Produced by makerops agents — job "
@@ -40,7 +45,11 @@ def build_writer_agent() -> ToolCallingAgent:
             "collection is missing, return the full deliverable text in "
             "your answer and say the wiki write could not happen. When a "
             "write tool answers PENDING APPROVAL, report the pending id "
-            "and stop — never retry."
+            "and stop — never retry. If you lack a tool for something, say "
+            "exactly that — never invent a permissions or configuration "
+            "excuse. Report the exact URL a tool call returns for any "
+            "deliverable's location — never guess or construct a URL "
+            "yourself."
         ),
         max_steps=8,
     )

@@ -14,12 +14,13 @@ import json
 import pkgutil
 import re
 
-from smolagents import CodeAgent
+from smolagents import CodeAgent, tool
 
 from . import config
 from .audit_agent import build_audit_agent
 from .coding_agent import build_coding_agent
 from .context import with_baseline
+from .maintainer_agent import build_maintainer_agent
 from .model import get_model
 from .ops_agent import build_ops_agent
 from .studio_agent import build_studio_agent
@@ -35,18 +36,21 @@ business and creative tasks for one user. Follow this procedure:
    audience, constraints, resources, quality, audit, context). Test it: if
    three reasonable people would produce three different deliverables from
    this brief (e.g. "make it better", "improve something"), it is too
-   vague — do NOT guess and do NOT invent a deliverable. Instead build a
-   plain Python dict and finish immediately, e.g.:
-   report = {{"status": "needs_clarification",
-     "summary": "The brief is too vague to execute without guessing.",
-     "deliverables": [], "audit": {{"performed": False}},
-     "attention": [], "next_steps": [],
-     "questions": ["What exactly should be improved?",
-                   "What does 'better' mean here — faster, cheaper, clearer?"]}}
+   vague — do NOT guess and do NOT invent a deliverable. Instead call
+   build_report and finish immediately, e.g.:
+   report = build_report(status="needs_clarification",
+     summary="The brief is too vague to execute without guessing.",
+     questions=["What exactly should be improved?",
+                "What does 'better' mean here — faster, cheaper, clearer?"])
    final_answer(report)
-2. PLAN, then delegate. Write long, detailed sub-task briefs — each team
-   member only knows what you tell it. Pass bulky source material via
-   additional_args instead of pasting it into the task string.
+2. PLAN, then delegate. Before asking the dispatching client a clarifying
+   question, check whether public or reference research could answer it
+   (official docs, specs, open-source project info) — if so, delegate to
+   web_researcher first and only ask about decisions, preferences, or
+   specifics only the user can supply. Write long, detailed sub-task
+   briefs — each team member only knows what you tell it. Pass bulky
+   source material via additional_args instead of pasting it into the
+   task string.
 3. BATCH BY MODEL. You and most team members share the resident general
    model; coder and the audit reviewer pool each force a multi-minute
    model swap in VRAM. Order the work: research, ops, writing, and media
@@ -71,24 +75,37 @@ business and creative tasks for one user. Follow this procedure:
    'YYYY-MM-DD <task title> — <deliverable name>', footer
    '*Produced by makerops agents — job <id>, audited: yes/no.*'.
    Transient answers go directly in the report.
-7. REPORT. Always finish by building the report as a plain Python dict in
-   your code and calling final_answer(report) — the dict IS the report; do
-   not wrap it in json.dumps, markdown, or any prose. Keys:
-   {{"status": "completed|needs_clarification|needs_attention|continuation",
-     "summary": "<what happened, one short paragraph>",
-     "deliverables": [{{"type": "outline_doc|file|text|image_url|audio_url",
-                        "title": "...", "location": "..."}}],
-     "audit": {{"performed": True/False, "reason": "...", "findings": "..."}},
-     "attention": ["<items needing the user, e.g. PENDING APPROVAL #id>"],
-     "questions": [], "next_steps": []}}
+7. REPORT. Always finish by calling build_report(...) to construct the
+   report, then final_answer(report) in the SAME code block — do not
+   hand-write the report as a nested dict/list literal, that is where
+   syntax mistakes happen. build_report(status, summary, deliverables=None,
+   audit_performed=False, audit_reason="", audit_findings="",
+   attention=None, questions=None, next_steps=None) returns the report
+   dict for you; deliverables is a list of {{"type", "title", "location"}}
+   dicts (each built with build_deliverable(type, title, location)).
+   status: "completed|needs_clarification|needs_attention|continuation".
    Never put your reasoning, code, or tool-call text into the summary.
    final_answer is a function you must actually CALL in a code block —
-   final_answer(report) — in the same step where you build the dict;
-   printing or describing the call does nothing.
+   final_answer(report) — in the same step where you build it; printing
+   or describing the call does nothing.
    When a tool or team member reports PENDING APPROVAL #id, put it in
    "attention" and move on — never retry a pending write.
 8. Video generation is out of scope for this stack — decline video tasks
    and note the limitation in the report.
+9. If you or a team member lacks a tool for something, say exactly that —
+   "I don't have a tool to do X" — never invent a permissions,
+   configuration, or access excuse.
+10. SELF-IMPROVEMENT. When a brief asks you to review, evaluate, or improve
+    the stack itself, delegate the evaluation to maintainer; delegate any
+    external research it flags as needed to web_researcher; if a proposal
+    is well-scoped enough to draft, have coder write the new file content.
+    You then call propose_code_change yourself (you already hold the
+    agents domain) with that content and a rationale citing maintainer's
+    evidence — this is exactly the kind of "will be executed" work that
+    gets audited by risk (step 4) before you propose it. Every actual
+    change is a human-reviewed diff at /approvals; nothing you propose is
+    applied without the user's approval, and an approved change that fails
+    its health check on restart is auto-reverted, not left broken.
 
 Write any output files under {config.DATA_DIR}. You can scaffold new
 specialist agents with agent_create when a recurring task deserves one;
@@ -129,8 +146,52 @@ def _report_shape_check(final_answer, memory, agent=None) -> bool:
     raise Exception(
         "Final answer must be the report dict with at least the keys "
         '"status" and "summary" (see the REPORT step of your procedure) — '
-        "build report = {...} in code and call final_answer(report). Do "
-        "not include any other text.")
+        "call build_report(...) and final_answer(report). Do not "
+        "hand-write the report as a dict/list literal; that is where "
+        "syntax mistakes happen. Do not include any other text.")
+
+
+@tool
+def build_deliverable(type: str, title: str, location: str) -> dict:
+    """Build one deliverable entry for build_report's deliverables list.
+
+    Args:
+        type: One of outline_doc, file, text, image_url, audio_url.
+        title: Short human-readable name of the deliverable.
+        location: URL, file path, or (for type="text") the full text.
+    """
+    return {"type": type, "title": title, "location": location}
+
+
+@tool
+def build_report(status: str, summary: str, deliverables: list | None = None,
+                 audit_performed: bool = False, audit_reason: str = "",
+                 audit_findings: str = "", attention: list | None = None,
+                 questions: list | None = None,
+                 next_steps: list | None = None) -> dict:
+    """Build the final report dict — call this instead of hand-writing a
+    nested dict/list literal, which is where small-model syntax mistakes
+    happen. Pass the result straight to final_answer().
+
+    Args:
+        status: One of completed, needs_clarification, needs_attention,
+            continuation.
+        summary: What happened, one short paragraph — never your
+            reasoning, code, or tool-call text.
+        deliverables: List of dicts from build_deliverable(...), or None.
+        audit_performed: Whether the auditor reviewed the work.
+        audit_reason: Why the audit was or wasn't performed.
+        audit_findings: The auditor's findings, if performed.
+        attention: Items needing the user, e.g. "PENDING APPROVAL #id".
+        questions: Questions for the user (needs_clarification only).
+        next_steps: What a continuation segment should do next.
+    """
+    return {"status": status, "summary": summary,
+            "deliverables": deliverables or [],
+            "audit": {"performed": audit_performed, "reason": audit_reason,
+                      "findings": audit_findings},
+            "attention": attention or [], "questions": questions or [],
+            "next_steps": next_steps or []}
 
 
 def _build_custom_agents() -> list:
@@ -154,21 +215,24 @@ def _build_custom_agents() -> list:
     return agents
 
 
-# The manager gets the agents domain for scaffolding/introspection, but not
-# the job-dispatch tools — a job's manager queueing further jobs would loop
-# the worker. Dispatch belongs to outside clients (Open WebUI).
+# The manager gets the agents domain for scaffolding/introspection and
+# proposing code changes, but not the job-dispatch tools — a job's manager
+# queueing further jobs would loop the worker. Dispatch belongs to outside
+# clients (Open WebUI).
 _MANAGER_AGENT_TOOLS = ("agent_list", "agent_read", "agent_create",
-                        "tools_help")
+                        "propose_code_change", "tools_help")
 
 
 def build_manager_agent() -> CodeAgent:
     return CodeAgent(
-        tools=[t for t in get_domain_tools("agents")
+        tools=[build_report, build_deliverable] +
+              [t for t in get_domain_tools("agents")
                if t.name in _MANAGER_AGENT_TOOLS],
         model=get_model("general"),
         managed_agents=[build_web_agent(), build_coding_agent(),
                         build_ops_agent(), build_writer_agent(),
                         build_studio_agent(), build_audit_agent(),
+                        build_maintainer_agent(),
                         *_build_custom_agents()],
         additional_authorized_imports=["json", "pathlib", "datetime"],
         instructions=with_baseline(_PROCEDURE),

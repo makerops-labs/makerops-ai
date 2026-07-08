@@ -7,7 +7,8 @@ from . import policy
 
 mcp = FastMCP(
     "approvals",
-    instructions="Check and list the human write-approval queue for gated write actions.")
+    instructions=("Check and list the human write-approval queue for gated "
+                 "write actions, and review audit history across all domains."))
 required_env = None  # always mounted
 
 
@@ -37,3 +38,20 @@ def list_pending_approvals() -> str:
     return "\n".join(
         f"#{a['id']} [{a['domain']}.{a['tool']}] {a['summary']} (since {a['created_at']})"
         for a in pending)
+
+
+@mcp.tool
+def agent_audit_history(limit: int = 50) -> str:
+    """Recent write-action history across every domain: completed,
+    approved, rejected, and failed actions (not just pending ones). Useful
+    for spotting patterns — e.g. which tools get rejected often, or which
+    domains generate the most write activity."""
+    entries = policy.read_audit(limit)
+    if not entries:
+        return "No audit history yet."
+    lines = []
+    for e in entries:
+        detail = e.get("summary") or e.get("error") or ""
+        lines.append(f"{e.get('ts', '?')} — {e.get('event', '?')} "
+                     f"{e.get('domain', '?')}.{e.get('tool', '?')}: {detail}")
+    return "\n".join(lines)

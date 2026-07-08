@@ -54,6 +54,11 @@ GLB files open in Blender, Windows 3D Viewer, or <https://gltf-viewer.donmccurdy
 - Inside the container the pipeline lazy-loads on the first job and unloads
   after `TRELLIS_IDLE_UNLOAD_S` (default 600 s) idle, so a running-but-idle
   container holds no VRAM.
+- **The idle container still holds ~5.4 GB of host RAM** (torch runtime +
+  cached weights) even after the VRAM unload. On the 24 GB WSL2 cap that is
+  the difference between the qwen3.6:35b variants loading or being
+  OOM-killed (`signal: killed` during tensor load — observed 2026-07-06).
+  `./stop.sh` when 3D work is done, not just idle.
 - WSL2 CUDA spills into shared system RAM when an LLM is resident — slow but
   survives. For full speed, generate while Ollama models are idle.
 - If a job OOMs: lower `texture_size` to 512 and `slat_steps`/`ss_steps` to 8;

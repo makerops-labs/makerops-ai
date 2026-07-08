@@ -63,8 +63,8 @@ static baseline block ([openwebui/contexts/_baseline.md](../openwebui/contexts/_
 | `triggerdev` | trigger task, get/list runs | `TRIGGERDEV_SECRET_KEY` |
 | `speech` | `speech_list_voices`, `speech_generate_audio` (TTS → `/files/audio/`) | speech (Kokoro, 8093) running |
 | `trellis` | `trellis_image_to_3d` (image → GLB → `/files/models/`) | trellis (8094) running — GPU, start-on-demand |
-| `agents` | `agent_list`, `agent_dispatch`, `agent_job_status`, `agent_job_result`, `agent_jobs_list`, `agent_read`, `agent_create` | smolagents running (for dispatch) |
-| `approvals` | `approval_status`, `list_pending_approvals` (read-only for models) | — |
+| `agents` | `agent_list`, `agent_dispatch`, `agent_job_status`, `agent_job_result`, `agent_jobs_list`, `agent_job_history`, `agent_read`, `agent_create`, `propose_code_change` | smolagents running (for dispatch) |
+| `approvals` | `approval_status`, `list_pending_approvals`, `agent_audit_history` (read-only for models) | — |
 
 `fetch_url` reviews any file type it can extract information from: web pages
 (→ markdown), JSON/XML/CSV/source (as text), PDF/docx/xlsx/pptx/epub (text
@@ -137,6 +137,27 @@ The `agents` domain is the bridge to the smolagents team:
   template (the LLM supplies parameters, never raw Python), names are
   validated, and existing files are never overwritten. The new agent is
   picked up after `docker compose -p smolagents restart`.
+- **`agent_job_history(days, status)`** / **`agent_audit_history(limit)`**
+  (the latter on the `approvals` domain) — recency-bounded job and
+  write-action history, the evidence base for the self-improvement loop
+  (`maintainer` agent — see [smolagents/README.md](../smolagents/README.md)
+  "Self-improvement loop").
+- **`propose_code_change(file_path, new_content, rationale)`** — proposes
+  an edit to *any* file in the repo (bind-mounted read-write at `/repo`,
+  `REPO_ROOT` env) as a human-reviewed diff. No path allowlist — gating on
+  approval is the safety boundary — but `.env` files and anything under
+  `.git/` or a `data/` directory are hard-excluded (confidentiality and
+  VCS/runtime-content integrity, which approval-gating doesn't itself
+  protect), and `.py` content is `ast.parse`-checked before it ever
+  reaches the approval queue. On approval, mcp-tools hands the write and
+  restart off to the separate [redeploy](../redeploy/) service (`POST
+  /restart`, `REDEPLOY_URL`/`REDEPLOY_TOKEN` in `.env`) rather than
+  touching Docker itself — see that service's README for why. Approving a
+  change to mcp-tools' own source restarts the very process handling the
+  approval; redeploy owns the outcome report (audit log + notify webhook)
+  independently so that's not a problem. A failed post-restart health
+  check triggers an automatic revert to the prior content and another
+  restart — nothing is left broken silently.
 
 ## Connecting clients
 

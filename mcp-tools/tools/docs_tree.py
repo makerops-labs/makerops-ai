@@ -105,17 +105,17 @@ report that to the user and stop; a human approves it at {self._base}/approvals.
 Never retry a pending write.
 {f"{chr(10)}Unmounted domains:{skipped}{chr(10)}" if skipped else ""}
 **Agent workforce.** Long or multi-step tasks (research + writing, media
-creation, business-ops sequences, anything needing tools you do not have or
-unattended execution) can be delegated to the local agent team via the
-`agents` domain: `agent_list` shows the roster, `agent_dispatch(...)`
-queues a background job (runs for minutes; long jobs continue across
-segments from a workspace synopsis), `agent_job_status` /
-`agent_job_result` track it. Refine the task into a concrete brief with
-the user before dispatching — the team cannot ask questions mid-run.
-Finished reports and needs-attention items land in the task inbox at
-{self._base}/inbox and trigger a notification. Handle a request inline
-when one answer or a couple of tool calls suffice; dispatch when it does
-not.
+creation, business-ops sequences, reviewing and improving the stack
+itself, anything needing tools you do not have or unattended execution)
+can be delegated to the local agent team via the `agents` domain:
+`agent_list` shows the roster, `agent_dispatch(...)` queues a background
+job (runs for minutes; long jobs continue across segments from a
+workspace synopsis), `agent_job_status` / `agent_job_result` track it.
+Refine the task into a concrete brief with the user before dispatching —
+the team cannot ask questions mid-run. Finished reports and
+needs-attention items land in the task inbox at {self._base}/inbox and
+trigger a notification. Handle a request inline when one answer or a
+couple of tool calls suffice; dispatch when it does not.
 
 {self._nav(down_hint=f"`{HELP_TOOL}('<domain>')` · GET {self._base}/context/<domain>")}"""
 

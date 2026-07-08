@@ -34,6 +34,12 @@ services:
       # the smolagents job worker picks them up and owns all other status
       # transitions. Also feeds the /inbox page.
       - ${SMOLAGENTS_JOBS_PATH:-../smolagents/data/smolagents/jobs}:/agent-jobs
+      # Self-improvement loop: propose_code_change reads/diffs any file in
+      # the repo (gating on human approval is the safety boundary, not a
+      # path allowlist — see docs/ai-setup-checklist.md). The actual write
+      # + restart happens in the separate redeploy service, which owns
+      # Docker socket access; mcp-tools only computes and stores the diff.
+      - ${MAKEROPS_AI_ROOT:-..}:/repo
       # Code is bind-mounted so edits only need a container restart;
       # rebuild the image only when dependencies change.
       - ./server.py:/app/server.py:ro

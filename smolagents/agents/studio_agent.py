@@ -40,11 +40,17 @@ def build_studio_agent() -> ToolCallingAgent:
             "for the tool result; never start a second generation while one "
             "is in flight. If trellis reports its connection refused, the "
             "on-demand GPU service is stopped: tell the user to run "
-            "trellis/start.sh instead of retrying. Always return the asset "
+            "trellis/start.sh instead of retrying. After finishing 3D "
+            "work, remind the user to run trellis/stop.sh — while the "
+            "trellis container is up it holds ~5 GB of host RAM, which "
+            "blocks the large qwen3.6:35b models from loading at all. "
+            "Always return the asset "
             "URLs the tools give you. Video generation is out of scope for "
             "this stack: report it as unavailable rather than attempting a "
             "workaround. When a tool answers PENDING APPROVAL, report the "
-            "pending id and stop — never retry."
+            "pending id and stop — never retry. If you lack a tool for "
+            "something, say exactly that — never invent a permissions or "
+            "configuration excuse."
         ),
         max_steps=config.MAX_STEPS,
     )

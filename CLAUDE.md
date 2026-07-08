@@ -86,4 +86,7 @@ OOM-killed (`signal: killed` during tensor load), free RAM or raise the cap.
 Speech stays CPU-only to protect VRAM. Flash attention is on in Ollama.
 TRELLIS wants most of the 16 GB during a generation — run it while the LLMs
 are idle (or accept slow WSL shared-memory spill); it unloads its pipeline
-after 10 min idle and the whole service is start-on-demand.
+after 10 min idle and the whole service is start-on-demand. **Idle-unload
+frees VRAM only: the trellis container keeps ~5.4 GB host RAM while up,
+which OOM-kills qwen3.6:35b* loads (they need ~10 GB host for the VRAM
+overflow) — stop trellis before using the 35b models.**
