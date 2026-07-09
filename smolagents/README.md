@@ -270,6 +270,31 @@ per proposed improvement in the **Stack Improvements** project. It has no
 web access itself — external research it flags gets delegated to
 `web_researcher` by the manager, same as any other sub-task.
 
+On every run it also does an **external trends sweep**, so the loop isn't
+limited to problems already visible in this stack's own history: it reads
+(or, on first run, creates) two append-only Outline docs in the **AI**
+collection — the **Research Ledger** (one entry per evaluated external
+finding: topic, source URL, decision of integrated/rejected/deferred,
+rationale) and the **Research Query Log** (fact-only: timestamp, service,
+query, result count, no decision) — then asks the manager to have
+`web_researcher` sweep arxiv/github/scholar/stackoverflow/general web and
+`x_search_recent` (X/Twitter, only if `X_API_BEARER_TOKEN` is configured —
+this call **costs real money per read**, no free tier) for smolagents/MCP/
+agent-orchestration/prompt-engineering developments. `web_researcher`
+checks the Query Log first and skips or varies any query already run
+against the same service within that service's recency window (7 days for
+X), so a weekly sweep doesn't re-pay for or re-evaluate the same data.
+Findings are deduped against the Research Ledger by exact source URL;
+genuinely new ones are judged for fit with this specific stack (strongest
+when tied to an observed internal pattern, but a purely prospective "this
+is a widely-recommended technique we don't use yet" finding is fine too,
+labeled as such) and every evaluated candidate — accepted, rejected, or
+deferred — gets logged to the Ledger, which is what lets the next run's
+dedup pass actually skip what's already been considered instead of
+re-litigating it. Accepted candidates get a Plane issue exactly like an
+internal-pattern finding; everything downstream (coder drafts, gated
+`propose_code_change`, auto-redeploy) is identical either way.
+
 For well-scoped proposals the manager has `coder` draft the new file
 content, then calls `propose_code_change` itself (the manager, not
 `maintainer`, holds this tool — every code change traces back to one

@@ -28,10 +28,13 @@ across projects.
 Lead-per-domain: best benchmark performer that fits the hardware leads;
 same-expertise lower-benchmark models (plus cross-lineage `gpt-oss:20b`)
 review to catch blind spots. Currently: `qwen3.6:35b` coding,
-`qwen3.5:9b`/`qwen3.5:9b-64k` general+vision, `qwen3-embedding:0.6b` RAG.
-Switch leads on benchmark evidence (no local A/B gate); old lead becomes a
-reviewer. On a switch update: `SMOLAGENTS_*_MODEL_ID` env vars,
-`openwebui/contexts/*.md` base models, README table.
+`qwen3.5:9b`/`qwen3.5:9b-64k` general+vision, `qwen3-embedding:0.6b` RAG,
+`qwen3.6:35b-64k` default chat/dispatch. Switch leads on benchmark evidence
+(no local A/B gate); old lead becomes a reviewer. On a switch update:
+`SMOLAGENTS_*_MODEL_ID` env vars, `openwebui/contexts/*.md` base models,
+README table. The debate system applies the same reviewer-decorrelation
+reasoning to its critic persona (defaults to `gpt-oss:20b`, same as the
+reviewer pools) — see the "Debate system" bullet below.
 
 ## Architecture facts that cost debugging time
 
@@ -90,6 +93,28 @@ reviewer. On a switch update: `SMOLAGENTS_*_MODEL_ID` env vars,
   install` (PEP 668) unless `PIP_BREAK_SYSTEM_PACKAGES=1` is set in the
   container's env — it's a throwaway container with no system Python to
   protect, so this is set unconditionally.
+- **Debate system is a second, parallel job queue**: `smolagents/data/
+  smolagents/debates`, bind-mounted into mcp-tools as `/agent-debates`
+  (same ownership split as the job queue — mcp-tools' `debate_start`
+  creates `session.json` + the first turn's queued job; the smolagents
+  worker, `agents/jobs.py`'s `_advance_debate`, owns every other
+  transition, including queuing each following turn). A debate turn IS an
+  ordinary job (tagged `job["debate"]`), run by a *separate* dedicated
+  orchestrator (`agents/debate_manager.py`, its own `CodeAgent` built once
+  alongside the general `manager`) — never the general manager, whose
+  `_PROCEDURE` would actively fight "delegate this turn to exactly one
+  persona and relay verbatim." Turn advancement (deciding whether to queue
+  another turn and who speaks next) is deterministic Python, never an LLM
+  tool call — same reasoning as the rule that a job's own manager never
+  gets dispatch tools (`manager.py`'s `_MANAGER_AGENT_TOOLS` comment): an
+  LLM inside a job must never be the one that triggers the next job. Two
+  narrow, explicitly-scoped exceptions mirror the job queue's own
+  `queued→cancelled` carve-out: mcp-tools may flip a debate `stuck→active`
+  (`debate_resume`) or any non-terminal status `→cancelled`
+  (`debate_cancel`). Entrepreneur/monitor personas default to the
+  `qwen3.6:35b-64k` lead (same as Task Dispatcher) — stop `trellis` first,
+  same RAM-starvation gotcha as opening that chat, since an unattended
+  debate hits it just as hard.
 
 ## Dependencies on makerops-core (sibling checkout `../makerops-core`)
 

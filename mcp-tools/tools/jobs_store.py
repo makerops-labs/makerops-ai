@@ -25,7 +25,8 @@ def available() -> bool:
     return JOBS_DIR.is_dir()
 
 
-def create_job(brief: dict, source: str, parent_job_id: str = "") -> dict:
+def create_job(brief: dict, source: str, parent_job_id: str = "",
+              debate: dict | None = None) -> dict:
     job = {
         "id": f"job-{int(time.time())}-{uuid.uuid4().hex[:6]}",
         "status": "queued",
@@ -40,6 +41,7 @@ def create_job(brief: dict, source: str, parent_job_id: str = "") -> dict:
         "report": None,
         "error": None,
         "log_tail": "",
+        "debate": debate,
     }
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     _save(job)
@@ -54,6 +56,20 @@ def get_job(job_id: str) -> dict | None:
         return json.loads(path.read_text())
     except (OSError, ValueError):
         return None
+
+
+def cancel_job(job_id: str) -> bool:
+    """Flip a still-queued job to cancelled — the one status transition this
+    side is allowed to make on its own (see module docstring). Returns False
+    (no-op) if the job doesn't exist or has already left the queued state,
+    e.g. the worker already picked it up."""
+    job = get_job(job_id)
+    if job is None or job.get("status") != "queued":
+        return False
+    job["status"] = "cancelled"
+    job["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    _save(job)
+    return True
 
 
 def list_jobs(status: str = "", limit: int = 30) -> list[dict]:

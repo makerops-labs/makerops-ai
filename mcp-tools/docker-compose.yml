@@ -7,8 +7,8 @@
 #
 # Gives LLM clients web search (via ai/searxng), URL fetching, and tools for
 # Outline, InvenTree, Plane, n8n, ComfyUI, FreeScout, draw.io, trigger.dev,
-# and smolagents agent scaffolding. Domains without an API token in .env are
-# skipped at startup.
+# smolagents agent scaffolding/dispatch, and multi-persona debates. Domains
+# without an API token in .env are skipped at startup.
 
 services:
   mcp-tools:
@@ -34,6 +34,11 @@ services:
       # the smolagents job worker picks them up and owns all other status
       # transitions. Also feeds the /inbox page.
       - ${SMOLAGENTS_JOBS_PATH:-../smolagents/data/smolagents/jobs}:/agent-jobs
+      # Shared debate session store: debate_start writes session.json + the
+      # first turn's queued job record here; the smolagents job worker owns
+      # turn advancement (writes round files, manifest entries, and queues
+      # each following turn) — same split as the job queue above.
+      - ${SMOLAGENTS_DEBATES_PATH:-../smolagents/data/smolagents/debates}:/agent-debates
       # Self-improvement loop: propose_code_change reads/diffs any file in
       # the repo (gating on human approval is the safety boundary, not a
       # path allowlist — see docs/ai-setup-checklist.md). The actual write

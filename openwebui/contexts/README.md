@@ -47,6 +47,7 @@ tuning you do in the UI.
 | Context | Base model | Tool domains |
 | --- | --- | --- |
 | [Task Dispatcher](task-dispatcher.md) | qwen3.6:35b-64k | agents, approvals, web, outline |
+| [Debate Moderator](debate-moderator.md) | qwen3.6:35b-64k | debate, web |
 | [Research Assistant](research-assistant.md) | qwen3.5:9b | web |
 | [Ops Assistant](ops-assistant.md) | qwen3.5:9b | outline, inventree, plane, n8n, freescout, triggerdev, approvals |
 | [Knowledge Curator](knowledge-curator.md) | qwen3.5:9b | outline, web, approvals |
@@ -94,3 +95,22 @@ the task inbox at `mcp.localhost/inbox` and can notify via
 go to the Outline collection **"Agent Deliverables"** (create it once in
 Outline); direct writes from the Task Dispatcher chat go wherever the
 user asks.
+
+### Starting a debate
+
+**Debate Moderator** is the front door to a separate, parallel system: a
+fixed team of three personas (entrepreneur, critic, monitor) that argue a
+goal over several rounds, one turn at a time, each turn a background job
+that automatically queues the next once it finishes — no orchestration
+needed once started. The Moderator's only job is to refine an ambiguous
+ask into a concrete brief (goal, mode, deliverables, constraints) the same
+way Task Dispatcher refines one before `agent_dispatch`, then call
+`debate_start` itself. Track a running debate with `debate_status`
+(quick check), `debate_manifest` (sequenced index of every round with a
+one-line description — useful for deciding what's worth reading in full),
+or `debate_read_round` (one round's complete text); a debate stuck after a
+crash or a failed turn surfaces via `debate_status`'s `stop_reason` and is
+recovered with `debate_resume` or ended with `debate_cancel`. See the
+model hierarchy table for why the entrepreneur/monitor personas default to
+the same lead as Task Dispatcher while the critic deliberately uses a
+different model lineage.

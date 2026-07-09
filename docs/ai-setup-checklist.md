@@ -108,7 +108,9 @@ domain should appear in `domains`).
       Research Assistant, Ops Assistant, Knowledge Curator, Inventory
       Manager, Coding Assistant, Studio, Code Auditor, General Auditor.
       Each becomes a named entry in the chat model picker with its system
-      prompt and tool scope baked in.
+      prompt and tool scope baked in. (Debate Moderator is set up
+      separately in §5h, once the agent job queue and debate system are
+      running.)
 - [ ] Make the default chat agent-aware: set `qwen3.6:35b-64k` as your
       default model and paste the baseline block
       ([openwebui/contexts/_baseline.md](../openwebui/contexts/_baseline.md))
@@ -221,21 +223,43 @@ same as any other gated write. See the root [README.md](../README.md)
       workspace (Projects → New Project) — `maintainer` files one issue
       per proposed improvement there. Note the workspace slug if it isn't
       already in `mcp-tools/.env`'s `PLANE_WORKSPACE_SLUGS`.
+- [ ] The **Research Ledger** and **Research Query Log** Outline docs
+      (external-trends-sweep bookkeeping — see root README's
+      "Self-improvement loop") are **self-bootstrapping**: `maintainer`
+      creates them itself in the AI collection the first time it doesn't
+      find one. No manual creation step, unlike the Plane project above.
+- [ ] Optional: to let `maintainer` include X/Twitter in its external
+      sweep, get a Bearer token from an X developer account (Project →
+      Keys and tokens → Bearer Token — **billed per read, ~$0.005-0.01/
+      read, no free tier**) and set `X_API_BEARER_TOKEN` in
+      `mcp-tools/.env`, then `cd mcp-tools && docker compose -p mcp-tools
+      up -d` (recreate — plain `restart` doesn't re-read `.env`). Leave it
+      empty to skip — the sweep works fine on the free engines alone
+      (arxiv, github, scholar, stackoverflow, general web). Verify:
+      `curl -s http://localhost:8099/healthz` should list `x` as mounted,
+      not skipped.
 - [ ] Optional recurring trigger: in n8n, a **Schedule Trigger** (weekly)
       node → call `agent_dispatch` on the agents MCP endpoint with a fixed
-      brief ("Review the last 7 days of job and audit history; research
-      and propose improvements; file findings in Plane and Outline;
-      audit: always"). On-demand dispatch works fine without this —
-      set it up once you'd rather not remember to ask.
+      brief ("Review the last 7 days of job and audit history; sweep
+      external sources for new AI-tooling techniques against the Research
+      Ledger and Query Log; research and propose improvements; file
+      findings in Plane and Outline; audit: always"). On-demand dispatch
+      works fine without this — set it up once you'd rather not remember
+      to ask.
 - [ ] **Dry-run the full loop**: ask a dispatch-capable chat (Task
       Dispatcher) to "review the stack's recent performance and propose
       improvements." Expected sequence: `maintainer` pulls
-      `agent_job_history`/`agent_audit_history` → an Outline report
-      appears in the AI collection → zero or more Plane issues appear in
-      Stack Improvements (zero is a valid, honest outcome on a quiet
-      history — don't expect a proposal every time) → if a proposal is
-      well-scoped, a diff appears at `/approvals` referencing the Plane
-      issue.
+      `agent_job_history`/`agent_audit_history`, reads or bootstraps the
+      Research Ledger and Query Log, and (via the manager) has
+      `web_researcher` sweep external sources → an Outline report appears
+      in the AI collection, and at least one Ledger entry gets logged for
+      anything evaluated (even if rejected/deferred) → zero or more Plane
+      issues appear in Stack Improvements (zero is a valid, honest outcome
+      on a quiet history and a sparse research landscape — don't expect a
+      proposal every time) → if a proposal is well-scoped, a diff appears
+      at `/approvals` referencing the Plane issue. Running the dry-run a
+      second time should show it skipping ledger-matched findings and
+      query-log-matched searches rather than re-evaluating everything.
 - [ ] **Dry-run a code-change approval**: propose (or wait for maintainer
       to propose) something trivial, review the diff at `/approvals`,
       approve it, and confirm: the file changed on disk, the correct
@@ -310,6 +334,50 @@ concept; this is the one-time setup.
       review what ran via the audit log (`/approvals` "Recent activity")
       at your own pace, the same way you already do for other notify-tier
       writes.
+
+## 5h. Debates (multi-persona argument)
+
+Three fixed personas (entrepreneur, critic, monitor) argue a goal over
+several rounds, one turn at a time in series — see the root
+[README.md](../README.md) "Debate system" for the concept. This reuses the
+agent job queue's mechanism (§5d), so complete that section first.
+
+- [ ] Pull the debate-only models if you haven't already for the reviewer
+      pool/task dispatch: `docker exec ollama ollama pull qwen3.6:35b-64k`
+      (create the derivative per §1 if not already done) and
+      `docker exec ollama ollama pull gpt-oss:20b` (~13 GB).
+- [ ] Recreate mcp-tools so it mounts the debate session store (new compose
+      volume): `cd mcp-tools && docker compose -p mcp-tools up -d`. Check
+      `curl -s http://localhost:8099/healthz | jq .domains` includes
+      `"debate"`, and restart smolagents (`docker restart smolagents`) so
+      its job worker builds the debate orchestrator alongside the general
+      manager.
+- [ ] Create the **Debate Moderator** preset from
+      [openwebui/contexts/debate-moderator.md](../openwebui/contexts/debate-moderator.md)
+      (recipe in [openwebui/contexts/README.md](../openwebui/contexts/README.md))
+      — base model `qwen3.6:35b-64k`, tool connections `debate` and `web`.
+- [ ] Stop `trellis` if it's running — the entrepreneur/monitor personas
+      default to `qwen3.6:35b-64k`, which hits the same RAM-starvation
+      conflict documented for Task Dispatcher (§4) and this stack's System
+      Requirements.
+- [ ] **Dry-run**: in the Debate Moderator preset, propose a small, concrete
+      idea; confirm it asks clarifying questions (mode, deliverables)
+      rather than guessing, confirms the brief back before calling
+      `debate_start`, and reports a session id. Watch `debate_status`
+      progress through a few rounds; confirm the model actually swaps to
+      `gpt-oss:20b` for critic turns (`docker exec ollama ollama ps` or
+      Ollama's logs) and back for entrepreneur/monitor turns — this is the
+      accepted VRAM-swap cost for cross-lineage decorrelation on an
+      unattended background tool.
+- [ ] Read `debate_manifest(session_id)` after a few rounds and confirm the
+      one-line descriptions are actually useful for deciding what to read
+      in full — that's the whole point of the manifest for a debate that
+      runs long.
+- [ ] **Crash-recovery dry-run** (optional but recommended once): restart
+      smolagents mid-turn (`docker restart smolagents`), confirm
+      `debate_status` shows `stuck` with a clear `stop_reason` rather than
+      silently stalling, then `debate_resume` it and confirm the exact
+      interrupted round re-runs with no gap in round numbering.
 
 ## 6. Write notifications (recommended)
 

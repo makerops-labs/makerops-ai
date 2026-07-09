@@ -125,7 +125,11 @@ business and creative tasks for one user. Follow this procedure:
    configuration, or access excuse.
 10. SELF-IMPROVEMENT. When a brief asks you to review, evaluate, or improve
     the stack itself, delegate the evaluation to maintainer; delegate any
-    external research it flags as needed to web_researcher; if a proposal
+    external research it flags as needed to web_researcher. maintainer's
+    review is ledger-aware, not just internal-history-based — it tracks
+    what's already been evaluated in the Research Ledger and what's
+    already been searched in the Research Query Log (both Outline docs),
+    so a periodic sweep only surfaces what's genuinely new. If a proposal
     is well-scoped enough to draft, have coder write the new file content.
     You then call propose_code_change yourself (you already hold the
     agents domain) with that content and a rationale citing maintainer's

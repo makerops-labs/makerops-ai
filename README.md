@@ -128,13 +128,26 @@ a lead on domain benchmarks and fits the hardware, the old lead becomes a
 reviewer candidate and configs move on: `SMOLAGENTS_*_MODEL_ID` env vars, the
 context presets, and this table.
 
+The **debate** system (below) applies the same reviewer-decorrelation
+reasoning to a different kind of task: its entrepreneur and monitor personas
+default to the default-chat lead `qwen3.6:35b-64k` (both make judgment calls
+where quality matters more than the multi-minute VRAM-swap cost, which is
+fine for an unattended background tool), while its critic persona defaults to
+`gpt-oss:20b` — the same cross-lineage model used in the reviewer pools —
+specifically so it doesn't share the other two personas' blind spots.
+
 ### Self-improvement loop
 
 The stack can research, evaluate, and propose improvements to *itself* —
 the goal being that you provide direction and approvals, not legwork. The
 **maintainer** agent (part of the smolagents roster, see
 [smolagents/README.md](smolagents/README.md)) reviews recent job and audit
-history for concrete, evidenced failure patterns, researches fixes
+history for concrete, evidenced failure patterns, *and* sweeps external
+sources (arxiv/github/scholar/stackoverflow/general web, plus X/Twitter if
+`X_API_BEARER_TOKEN` is configured) for new AI-tooling techniques worth
+adopting — tracked in two self-bootstrapping Outline docs (a Research
+Ledger of findings/decisions, a Research Query Log of what's already been
+searched) so repeat sweeps only look at what's new. It researches fixes
 (delegating to web_researcher via the manager), writes an evaluation report
 to Outline's **AI** collection, and files one issue per proposed
 improvement in the **Stack Improvements** Plane project. For well-scoped
@@ -165,8 +178,41 @@ for.
 
 Trigger a review on demand by asking any dispatch-capable chat (e.g. Task
 Dispatcher) to "review the stack's recent performance and propose
-improvements," or set up the optional weekly n8n cron workflow described
-in the checklist.
+improvements" — this always includes the external trends sweep, not just
+internal history — or set up the optional weekly n8n cron workflow
+described in the checklist.
+
+### Debate system
+
+A fixed team of three personas — **entrepreneur** (proposes and defends the
+strongest concrete version of an idea), **critic** (independent devil's
+advocate), and **monitor** (neutral facilitator; decides
+continue/redirect/conclude) — argues a goal over several rounds. Because all
+of them share one GPU, they run one at a time in series, correspondence-chess
+style: each turn is a background job that writes its argument to a file and
+automatically queues the next persona's turn once it finishes — no polling
+loop or scheduler to babysit, it reuses the same file-based job-queue
+mechanism as `agent_dispatch` (see `smolagents/agents/jobs.py`).
+
+Each round is kept small (a one-line abstract plus a focused argument,
+hard-capped in size), but the debate as a whole stays navigable via a
+**manifest**: a sequenced, append-only index (round number, persona, word
+count, one-line description, file path) that a turn's own prompt renders
+compactly — recent rounds in full, older ones as a description a persona can
+choose to read in full or skip, so context stays flat no matter how long the
+debate runs.
+
+Start one from the **Debate Moderator** chat preset (it refines an ambiguous
+ask into a concrete goal/mode/deliverables brief with you first, the same way
+Task Dispatcher refines a brief before `agent_dispatch`), or call
+`debate_start` directly if you already have one. `mode="narrow"` keeps a
+tight, well-scoped question concrete (6 rounds by default); `mode="broad"`
+lets the personas research and range wider over an open-ended one (16 rounds
+by default). Track a running debate with `debate_status` / `debate_manifest`
+/ `debate_read_round`; a turn that crashes or ends `needs_attention`/`failed`
+halts auto-advancement (status `stuck`, with a `stop_reason`) rather than
+silently stalling or queuing garbage into the next turn — recover it with
+`debate_resume` or give up with `debate_cancel`.
 
 ### Project workspaces
 

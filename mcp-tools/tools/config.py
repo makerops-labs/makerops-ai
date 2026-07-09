@@ -59,12 +59,36 @@ TRELLIS_URL = _env("TRELLIS_URL", "http://host.docker.internal:8094")
 TRIGGERDEV_URL = _env("TRIGGERDEV_URL", "http://host.docker.internal:3040")
 TRIGGERDEV_SECRET_KEY = _env("TRIGGERDEV_SECRET_KEY")
 
+# X (Twitter) recent search — costs real money per read (no free tier since
+# Feb 2026); used only by the self-improvement loop's research sweep. See
+# tools/x_search.py.
+X_API_URL = _env("X_API_URL", "https://api.x.com")
+X_API_BEARER_TOKEN = _env("X_API_BEARER_TOKEN")
+
 # Host path of smolagents/agents is bind-mounted here (rw) for agent_create.
 SMOLAGENTS_AGENTS_DIR = Path(_env("SMOLAGENTS_AGENTS_DIR", "/smolagents-agents"))
 
 # Shared agent-job queue (smolagents/data/smolagents/jobs bind-mounted rw)
 # for agent_dispatch / job status / the /inbox page.
 AGENT_JOBS_DIR = Path(_env("AGENT_JOBS_DIR", "/agent-jobs"))
+
+# Shared debate session store (smolagents/data/smolagents/debates
+# bind-mounted rw) for debate_start / status / manifest / round reads. A
+# second, parallel queue alongside AGENT_JOBS_DIR above — see
+# tools/debate_domain.py and tools/debate_store.py.
+AGENT_DEBATES_DIR = Path(_env("AGENT_DEBATES_DIR", "/agent-debates"))
+
+# Debate round-count defaults/ceiling — mode-dependent default, caller
+# overridable up to the hard ceiling (see debate_start).
+DEBATE_MAX_ROUNDS_NARROW = int(_env("DEBATE_MAX_ROUNDS_NARROW", "6"))
+DEBATE_MAX_ROUNDS_BROAD = int(_env("DEBATE_MAX_ROUNDS_BROAD", "16"))
+DEBATE_HARD_MAX_ROUNDS = int(_env("DEBATE_HARD_MAX_ROUNDS", "40"))
+# Default cadence (entrepreneur+critic exchanges between monitor
+# check-ins) and manifest row cap for debate_manifest — mirrors the
+# smolagents-side defaults each turn's own prompt uses (kept as a separate
+# constant since this is a different service/process; see agents/config.py).
+DEBATE_MONITOR_EVERY_N_DEFAULT = int(_env("DEBATE_MONITOR_EVERY_N_DEFAULT", "2"))
+DEBATE_MANIFEST_RENDER_LIMIT = int(_env("DEBATE_MANIFEST_RENDER_LIMIT", "25"))
 
 # Self-improvement loop: full repo bind-mounted rw for propose_code_change to
 # read/diff any file (gating on approval is the safety boundary, not a path

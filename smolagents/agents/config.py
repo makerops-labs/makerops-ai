@@ -52,3 +52,45 @@ MCP_TOOLS_PUBLIC_URL = os.environ.get("SMOLAGENTS_MCP_PUBLIC_URL",
 # per-domain endpoints; unavailable domains degrade to no tools.
 MCP_TOOLS_URL = os.environ.get("SMOLAGENTS_MCP_URL",
                                "http://host.docker.internal:8099")
+
+# Debate system: three fixed personas (entrepreneur, critic, monitor) argue
+# in series, one turn per background job (see agents/debate_manager.py,
+# agents/debate/, and jobs.py's _advance_debate). Entrepreneur/monitor use
+# the most capable model on the stack — both make judgment calls (building
+# the case / deciding when to conclude) where quality matters more than the
+# multi-minute VRAM swap cost, which is fine for an unattended background
+# tool. Critic uses a different lineage (gpt-oss) so it doesn't share the
+# other two's blind spots, same reasoning as the audit reviewer pools. Empty
+# = fall back to get_model("general")'s role default.
+DEBATE_ENTREPRENEUR_MODEL_ID = os.environ.get("SMOLAGENTS_DEBATE_ENTREPRENEUR_MODEL_ID",
+                                              "qwen3.6:35b-64k")
+DEBATE_CRITIC_MODEL_ID = os.environ.get("SMOLAGENTS_DEBATE_CRITIC_MODEL_ID",
+                                        "gpt-oss:20b")
+DEBATE_MONITOR_MODEL_ID = os.environ.get("SMOLAGENTS_DEBATE_MONITOR_MODEL_ID",
+                                         "qwen3.6:35b-64k")
+
+# Debate turn orchestrator: this is "delegate once, relay verbatim" so it
+# needs far fewer steps than the general manager's MANAGER_MAX_STEPS.
+DEBATE_MANAGER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEBATE_MANAGER_MAX_STEPS", "6"))
+
+# Hard cap on a single round file's size (chars) — a backstop, not the
+# expected case; persona prompts target ~400-700 words on their own.
+DEBATE_ROUND_MAX_CHARS = int(os.environ.get("SMOLAGENTS_DEBATE_ROUND_MAX_CHARS", "8000"))
+
+# Bounds on what gets injected into a turn's task prompt so context stays
+# flat regardless of how long the debate runs: how many manifest rows render
+# before older ones collapse to "N earlier rounds omitted", and how many of
+# the most recent rounds get their full text included (older ones are
+# manifest-only, readable on demand via pathlib — see _DEBATE_PROCEDURE).
+DEBATE_MANIFEST_RENDER_LIMIT = int(os.environ.get("SMOLAGENTS_DEBATE_MANIFEST_RENDER_LIMIT", "25"))
+DEBATE_RECENT_ROUNDS_FULL = int(os.environ.get("SMOLAGENTS_DEBATE_RECENT_ROUNDS_FULL", "2"))
+
+# Default cadence: this many entrepreneur+critic exchanges between monitor
+# checkpoints (a monitor round is inserted after each cycle of 2x this many
+# turns). The monitor's checkpoint decides continue/redirect/conclude.
+DEBATE_MONITOR_EVERY_N_DEFAULT = int(os.environ.get("SMOLAGENTS_DEBATE_MONITOR_EVERY_N", "2"))
+
+# Debate session directory (session.json, manifest.jsonl, rounds/) — shared
+# with mcp-tools (debate_start et al.) via bind mount, same pattern as the
+# job queue above.
+DEBATES_DIR = os.path.join(DATA_DIR, "debates")
