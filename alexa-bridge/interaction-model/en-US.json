@@ -1,0 +1,96 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "maker ops",
+      "intents": [
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "CheckStatusIntent",
+          "slots": [],
+          "samples": [
+            "status",
+            "check status",
+            "what's the status",
+            "what is the status",
+            "how's it going",
+            "any update",
+            "any updates",
+            "give me an update"
+          ]
+        },
+        {
+          "name": "ConfirmActionIntent",
+          "slots": [],
+          "samples": [
+            "confirm",
+            "yes confirm",
+            "approve",
+            "approve it",
+            "confirm that",
+            "go ahead",
+            "do it",
+            "yes do it"
+          ]
+        },
+        {
+          "name": "DenyActionIntent",
+          "slots": [],
+          "samples": [
+            "deny",
+            "reject",
+            "reject it",
+            "deny that",
+            "cancel that",
+            "don't do it",
+            "no don't"
+          ]
+        },
+        {
+          "name": "StartOverIntent",
+          "slots": [],
+          "samples": [
+            "start over",
+            "start a new conversation",
+            "forget that",
+            "clear the conversation",
+            "reset",
+            "let's start over"
+          ]
+        },
+        {
+          "name": "AskLiaisonIntent",
+          "slots": [
+            {
+              "name": "Utterance",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "{Utterance}",
+            "to {Utterance}",
+            "about {Utterance}",
+            "for {Utterance}",
+            "what {Utterance}",
+            "if {Utterance}",
+            "can you {Utterance}"
+          ]
+        }
+      ]
+    }
+  }
+}

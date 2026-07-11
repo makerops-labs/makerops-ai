@@ -48,6 +48,7 @@ tuning you do in the UI.
 | --- | --- | --- |
 | [Task Dispatcher](task-dispatcher.md) | qwen3.6:35b-64k | agents, approvals, web, outline |
 | [Debate Moderator](debate-moderator.md) | qwen3.6:35b-64k | debate, web |
+| [Researcher](researcher.md) | qwen3.6:35b-64k | web |
 | [Research Assistant](research-assistant.md) | qwen3.5:9b | web |
 | [Ops Assistant](ops-assistant.md) | qwen3.5:9b | outline, inventree, plane, n8n, freescout, triggerdev, approvals |
 | [Knowledge Curator](knowledge-curator.md) | qwen3.5:9b | outline, web, approvals |
@@ -73,6 +74,8 @@ same-expertise, lower-benchmark models (including a different lineage) to
 catch the lead's blind spots.
 
 The same contexts exist in smolagents: web_researcher ≈ Research Assistant,
+researcher ≈ Researcher (the structured research briefs the manager and
+debate turns delegate to — same fixed brief format both sides),
 ops ≈ Ops Assistant, coder ≈ Coding Assistant, writer ≈ Knowledge Curator,
 studio ≈ Studio. For the narrower ones (Inventory Manager), scaffold an
 equivalent agent with `agent_create` if you want it in the agent workspace

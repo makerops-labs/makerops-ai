@@ -24,11 +24,13 @@ DOMAINS: dict[str, str | None] = {
     "speech": None,
     "trellis": None,
     "debate": None,
+    "liaison": None,
     "x": "X_API_BEARER_TOKEN",
 }
 
 _MODULE_NAMES = {"approvals": "approvals_tools", "agents": "agents_domain",
-                 "debate": "debate_domain", "x": "x_search"}
+                 "debate": "debate_domain", "liaison": "liaison_domain",
+                 "x": "x_search"}
 
 
 def available_domains() -> dict[str, object]:

@@ -1,0 +1,32 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "en-US": {
+          "name": "MakerOps",
+          "summary": "Private voice control for the MakerOps home AI stack.",
+          "description": "Talk to the MakerOps agent liaison: ask questions, dispatch tasks, check status, and approve or deny pending actions by voice. Not published — for personal/development use only.",
+          "examplePhrases": [
+            "Alexa, ask maker ops what's on my task list",
+            "Alexa, ask maker ops to check inventory levels",
+            "Alexa, tell maker ops status"
+          ]
+        }
+      },
+      "isAvailableWorldwide": false,
+      "testingInstructions": "Development-only skill; test via the Developer Console Simulator or an Echo device on the same Amazon account.",
+      "category": "SMART_HOME",
+      "distributionCountries": []
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "sslCertificateType": "Trusted",
+          "uri": "https://REPLACE-WITH-YOUR-DOMAIN/alexa"
+        },
+        "interfaces": []
+      }
+    },
+    "manifestVersion": "1.0"
+  }
+}

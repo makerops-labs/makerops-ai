@@ -140,8 +140,9 @@ def agent_create(name: str, description: str, tool_domains: list[str],
     review; the user is notified with a summary."""
     if not _NAME_RE.match(name):
         return "ERROR: name must match ^[a-z][a-z0-9_]{2,30}$ (snake_case)."
-    if name in ("manager", "web_researcher", "coder", "ops", "writer",
-                "studio", "auditor", "maintainer", "custom"):
+    if name in ("manager", "web_researcher", "researcher", "coder", "ops",
+                "writer", "studio", "auditor", "maintainer", "custom",
+                "entrepreneur", "critic", "monitor"):
         return f"ERROR: '{name}' is reserved."
     bad = [d for d in tool_domains if d not in _VALID_DOMAINS]
     if bad:
@@ -205,6 +206,15 @@ def agent_dispatch(objective: str, deliverables: list[str],
     solution there. The user is notified with a summary."""
     if not objective.strip():
         return "ERROR: objective is empty — refine the task with the user first."
+    # A caller passing a single string instead of a list is a common mistake
+    # (str is itself iterable) — without this it silently explodes into one
+    # list entry per character, corrupting the brief the manager sees.
+    if isinstance(deliverables, str):
+        deliverables = [deliverables]
+    if isinstance(constraints, str):
+        constraints = [constraints]
+    if isinstance(resources, str):
+        resources = [resources]
     deliverables = [d for d in (deliverables or []) if d.strip()]
     if not deliverables:
         return ("ERROR: at least one explicit deliverable is required "

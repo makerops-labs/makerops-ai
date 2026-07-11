@@ -53,7 +53,7 @@ static baseline block ([openwebui/contexts/_baseline.md](../openwebui/contexts/_
 | Domain | Tools | Needs |
 |---|---|---|
 | `web` | `web_search`, `fetch_url` | searxng running |
-| `x` | `x_search_recent` (X/Twitter, last 7 days) — **costs real money per read** (~$0.005-0.01/read, no free tier), used by the self-improvement research sweep | `X_API_BEARER_TOKEN` |
+| `x` | `x_search_recent` (X/Twitter, last 7 days) — **costs real money per read** (~$0.005-0.01/read, no free tier; confirmed live 2026-07-09 at the $0.005 tier), used by the self-improvement research sweep. Defaults to/caps at 100 results/call → **$0.50-$1.00/call**; see [docs/ai-setup-checklist.md](../docs/ai-setup-checklist.md) "§5e" for the full per-loop-iteration cost math | `X_API_BEARER_TOKEN` |
 | `outline` | search/get/list, create/update documents | `OUTLINE_API_TOKEN` |
 | `inventree` | search/get parts, list stock, create part, adjust stock | `INVENTREE_API_TOKEN` |
 | `plane` | list projects/issues, get issue, create/update issue, comment | `PLANE_API_KEY` + `PLANE_WORKSPACE_SLUG` |

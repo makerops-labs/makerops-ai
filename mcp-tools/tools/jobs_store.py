@@ -26,7 +26,7 @@ def available() -> bool:
 
 
 def create_job(brief: dict, source: str, parent_job_id: str = "",
-              debate: dict | None = None) -> dict:
+              debate: dict | None = None, liaison: dict | None = None) -> dict:
     job = {
         "id": f"job-{int(time.time())}-{uuid.uuid4().hex[:6]}",
         "status": "queued",
@@ -42,6 +42,7 @@ def create_job(brief: dict, source: str, parent_job_id: str = "",
         "error": None,
         "log_tail": "",
         "debate": debate,
+        "liaison": liaison,
     }
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     _save(job)

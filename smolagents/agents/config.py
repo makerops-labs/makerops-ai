@@ -32,8 +32,19 @@ DATA_DIR = os.environ.get("SMOLAGENTS_DATA_DIR", "./data")
 MAX_STEPS = int(os.environ.get("SMOLAGENTS_MAX_STEPS", "12"))
 
 # Manager orchestration: extra step headroom, periodic replanning, and the
-# segment cap for long jobs that continue from a workspace synopsis.
-MANAGER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_MANAGER_MAX_STEPS", "20"))
+# segment cap for long jobs that continue from a workspace synopsis. Verified
+# live that 20 exhausts mid-orchestration on a self-improvement sweep job:
+# the manager receives maintainer's (large) final_answer, needs steps left to
+# delegate onward to web_researcher and still compile a structured report —
+# 20 wasn't enough headroom for that multi-hop delegation chain.
+MANAGER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_MANAGER_MAX_STEPS", "32"))
+
+# maintainer's self-improvement procedure spans internal review (job/audit
+# history) AND the external trends sweep (ledger bootstrap/dedup, research
+# delegation, evaluation, reporting) — more phases than the default
+# specialist budget affords; verified live that MAX_STEPS=12 exhausts
+# before the sweep phase ever completes.
+MAINTAINER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_MAINTAINER_MAX_STEPS", "30"))
 PLANNING_INTERVAL = int(os.environ.get("SMOLAGENTS_PLANNING_INTERVAL", "5"))
 MAX_SEGMENTS = int(os.environ.get("SMOLAGENTS_MAX_SEGMENTS", "8"))
 
@@ -69,9 +80,17 @@ DEBATE_CRITIC_MODEL_ID = os.environ.get("SMOLAGENTS_DEBATE_CRITIC_MODEL_ID",
 DEBATE_MONITOR_MODEL_ID = os.environ.get("SMOLAGENTS_DEBATE_MONITOR_MODEL_ID",
                                          "qwen3.6:35b-64k")
 
-# Debate turn orchestrator: this is "delegate once, relay verbatim" so it
-# needs far fewer steps than the general manager's MANAGER_MAX_STEPS.
-DEBATE_MANAGER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEBATE_MANAGER_MAX_STEPS", "6"))
+# Debate turn orchestrator: this is "delegate once (research at most once,
+# then the persona), relay verbatim" so it needs far fewer steps than the
+# general manager's MANAGER_MAX_STEPS.
+DEBATE_MANAGER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEBATE_MANAGER_MAX_STEPS", "8"))
+
+# Dedicated researcher agent (agents/researcher_agent.py) — structured,
+# multi-source research briefs, delegatable by the general manager, the
+# debate orchestrator, and usable standalone. Empty = the general lead
+# (same resident model as the managers, so delegating to it costs no VRAM
+# swap).
+RESEARCHER_MODEL_ID = os.environ.get("SMOLAGENTS_RESEARCHER_MODEL_ID", "")
 
 # Hard cap on a single round file's size (chars) — a backstop, not the
 # expected case; persona prompts target ~400-700 words on their own.
@@ -94,3 +113,32 @@ DEBATE_MONITOR_EVERY_N_DEFAULT = int(os.environ.get("SMOLAGENTS_DEBATE_MONITOR_E
 # with mcp-tools (debate_start et al.) via bind mount, same pattern as the
 # job queue above.
 DEBATES_DIR = os.path.join(DATA_DIR, "debates")
+
+# Alexa liaison: a second, dedicated CodeAgent (agents/alexa_liaison.py) that
+# owns voice conversations turn-by-turn, built once alongside manager/
+# debate_manager and reused with reset=True per turn (prior turns folded
+# into the task text — see jobs.py's _format_liaison_task). One JSON session
+# per Alexa userId lives here, shared with mcp-tools (liaison_turn et al.)
+# via bind mount, same pattern as JOBS_DIR/DEBATES_DIR above.
+LIAISON_DIR = os.path.join(DATA_DIR, "liaison")
+
+# How many of the most recent turns (user+liaison lines) get folded into a
+# turn's task text — bounded so context stays flat regardless of how long a
+# voice conversation runs; older turns are simply dropped, not summarized
+# (a voice session is short-lived by nature, unlike a debate's manifest).
+LIAISON_HISTORY_TURNS = int(os.environ.get("SMOLAGENTS_LIAISON_HISTORY_TURNS", "12"))
+
+# A liaison turn is "answer or delegate once, relay concisely" — closer to a
+# debate turn's fixed-shape delegation than the general manager's multi-phase
+# procedure, so it gets a similarly small step budget (matches
+# DEBATE_MANAGER_MAX_STEPS's reasoning) — this also matters for latency:
+# a smaller budget makes jobs.py's salvage re-run kick in sooner on a model
+# that computes build_liaison_turn(...) but forgets to call final_answer()
+# with it, observed live with the 9b general model.
+LIAISON_MAX_STEPS = int(os.environ.get("SMOLAGENTS_LIAISON_MAX_STEPS", "6"))
+
+# A session with no turns for longer than this is treated as stale — its
+# history is dropped before the next turn's task is built, rather than
+# silently reinjecting days-old context into a "new" conversation the user
+# no longer remembers starting.
+LIAISON_SESSION_STALE_HOURS = float(os.environ.get("SMOLAGENTS_LIAISON_SESSION_STALE_HOURS", "6"))

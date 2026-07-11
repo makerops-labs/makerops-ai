@@ -33,6 +33,7 @@ _TERMINAL = {"completed", "needs_clarification", "needs_attention",
 
 _jobs_dir = Path(config.JOBS_DIR)
 _debates_dir = Path(config.DEBATES_DIR)
+_liaison_dir = Path(config.LIAISON_DIR)
 
 
 def _now() -> str:
@@ -228,12 +229,27 @@ def _render_debate_manifest(session_id: str, limit: int) -> str:
     return "\n".join(lines)
 
 
+def _clean_round_text(text: str) -> str:
+    """Deterministic backstop behind the personas' own output contract
+    (debate/format.py): unwrap an answer the model wrapped whole in a code
+    fence, so the round file and the next turn's prompt get prose, not a
+    ```-block the next persona would imitate. Content inside is preserved
+    verbatim — this only strips the wrapper."""
+    text = (text or "").strip()
+    while text.startswith("```") and text.endswith("```"):
+        first_newline = text.find("\n")
+        if first_newline == -1:
+            break
+        text = text[first_newline + 1:-3].strip()
+    return text
+
+
 def _write_debate_round_file(session_id: str, round_num: int, persona: str,
                              full_text: str) -> str:
     """Writes the round file (hard-capped as a backstop — persona prompts
     target ~400-700 words on their own) and returns its path relative to
     the session directory, for the manifest entry."""
-    text = full_text.strip()
+    text = _clean_round_text(full_text)
     if len(text) > config.DEBATE_ROUND_MAX_CHARS:
         text = (text[:config.DEBATE_ROUND_MAX_CHARS]
                + f"\n\n... [truncated at {config.DEBATE_ROUND_MAX_CHARS} chars]")
@@ -316,17 +332,31 @@ def _format_debate_task(job: dict, workspace: Path) -> str:
     recent = _recent_debate_round_texts(session_id, config.DEBATE_RECENT_ROUNDS_FULL)
     if recent:
         lines.append("\n--- Full text of the most recent round(s) ---\n" + recent)
-    lines.append(
-        f"\nYOUR JOB THIS TURN: delegate this ENTIRE turn to the '{persona}' "
-        "sub-agent per your procedure steps 3-6 — pass it the goal, mode, "
-        "constraints, manifest, and recent-round text above (plus any "
-        "monitor redirect), call it exactly once, then relay its answer "
-        "verbatim via build_debate_report and finish.")
+    if debate.get("synthesis"):
+        lines.append(
+            f"\nSYNTHESIS MODE — the debate has ENDED "
+            f"({session.get('stop_reason') or 'round cap reached'}). "
+            f"YOUR JOB THIS TURN: delegate this ENTIRE turn to the "
+            f"'monitor' sub-agent, telling it explicitly this is SYNTHESIS "
+            f"MODE: it must write the final stand-alone report for the "
+            f"human owner (what was decided or learned, the strongest "
+            f"surviving objections, concrete next steps, open questions), "
+            f"drawing on the whole manifest — no verdict line. Then relay "
+            f"its answer verbatim via build_debate_report "
+            f"(verdict='conclude') and finish.")
+    else:
+        lines.append(
+            f"\nYOUR JOB THIS TURN: delegate this ENTIRE turn to the "
+            f"'{persona}' sub-agent per your procedure steps 3-6 — pass it "
+            "the goal, mode, constraints, manifest, and recent-round text "
+            "above (plus any monitor redirect), call it exactly once, then "
+            "relay its answer verbatim via build_debate_report and finish.")
     return "\n".join(lines)
 
 
 def _new_debate_job(session_id: str, round_num: int, persona: str,
-                    mode: str, goal: str) -> dict:
+                    mode: str, goal: str, synthesis: bool = False) -> dict:
+    label = "synthesis" if synthesis else f"turn {round_num}"
     return {
         "id": f"job-{int(time.time())}-{uuid.uuid4().hex[:6]}",
         "status": "queued",
@@ -337,17 +367,27 @@ def _new_debate_job(session_id: str, round_num: int, persona: str,
         "heartbeat_ts": 0,
         "parent_job_id": None,
         "segments": 1,
-        "brief": {"objective": f"Debate turn {round_num} ({persona}, "
+        "brief": {"objective": f"Debate {label} ({persona}, "
                                f"{mode}): {goal[:150]}",
-                 "deliverables": ["round argument text"]},
+                 "deliverables": ["final human-facing synthesis" if synthesis
+                                  else "round argument text"]},
         "report": None,
         "error": None,
         "log_tail": "",
-        "debate": {"session_id": session_id, "round": round_num, "persona": persona},
+        "debate": {"session_id": session_id, "round": round_num,
+                   "persona": persona, "synthesis": synthesis},
     }
 
 
-def _notify_debate(event: str, session: dict) -> None:
+def _write_debate_summary(session_id: str, text: str) -> None:
+    """summary.md is the debate's single human-facing artifact — the final
+    synthesis a person reads instead of the whole round history. Served by
+    the debate_result MCP tool."""
+    (_debates_dir / session_id / "summary.md").write_text(
+        _clean_round_text(text) + "\n")
+
+
+def _notify_debate(event: str, session: dict, summary: str = "") -> None:
     """Fire-and-forget webhook, mirrors _notify but for session-level
     events (concluded/stuck) rather than per-job ones."""
     if not config.NOTIFY_WEBHOOK:
@@ -355,6 +395,7 @@ def _notify_debate(event: str, session: dict) -> None:
     payload = {"event": event, "session_id": session["id"],
               "goal": session.get("goal", ""), "status": session.get("status"),
               "stop_reason": session.get("stop_reason") or "",
+              "summary": summary[:500],
               "inbox_url": f"{config.MCP_TOOLS_PUBLIC_URL}/inbox"}
     try:
         httpx.post(config.NOTIFY_WEBHOOK, json=payload, timeout=10)
@@ -375,8 +416,9 @@ def _advance_debate(job: dict, report: dict) -> None:
              f"advance turn {round_num}")
         return
 
-    full_text = (report.get("full_text") or "").strip()
-    abstract = (report.get("abstract") or full_text[:120] or "(empty)").strip()
+    full_text = _clean_round_text(report.get("full_text") or "")
+    abstract = _clean_round_text(report.get("abstract") or "").splitlines()
+    abstract = (abstract[0] if abstract else "") or full_text[:120] or "(empty)"
     rel_path = _write_debate_round_file(session_id, round_num, persona, full_text)
     _append_debate_manifest_entry(session_id, {
         "seq": round_num, "round": round_num, "persona": persona,
@@ -389,8 +431,19 @@ def _advance_debate(job: dict, report: dict) -> None:
 
     if session.get("status") == "cancelled":
         # Let this turn's output land, but a cancelled debate never queues
-        # another turn regardless of what the monitor's verdict said.
+        # another turn (nor concludes) regardless of what the turn said —
+        # the user's cancel wins even over an in-flight synthesis.
         _save_debate_session(session)
+        return
+
+    if debate.get("synthesis"):
+        # The closing report just landed — the debate is over regardless of
+        # any verdict field. Its text becomes the human-facing summary.md.
+        _write_debate_summary(session_id, full_text)
+        session["status"] = "concluded"
+        session["stop_reason"] = session.get("stop_reason") or "debate ended"
+        _save_debate_session(session)
+        _notify_debate("debate.concluded", session, summary=full_text)
         return
 
     verdict = report.get("verdict", "continue")
@@ -400,12 +453,24 @@ def _advance_debate(job: dict, report: dict) -> None:
         verdict = "continue"
 
     if verdict == "conclude" or round_num >= session["max_rounds"]:
-        session["status"] = "concluded"
+        # The debate is over, but it must always end with ONE final
+        # human-facing synthesis (summary.md) — never leave the human to
+        # reconstruct the outcome from raw rounds. One extra monitor turn
+        # is queued for that report; it runs past max_rounds by design
+        # (it's the closing report, not more debating).
         session["stop_reason"] = (
             "monitor concluded the debate" if verdict == "conclude"
             else f"max_rounds ({session['max_rounds']}) reached")
+        session["pending_redirect"] = None
+        next_job = _new_debate_job(session_id, round_num + 1, "monitor",
+                                   session["mode"], session["goal"],
+                                   synthesis=True)
+        session["status"] = "concluding"
+        session["queued_job_id"] = next_job["id"]
+        session["next_expected"] = {"round": round_num + 1,
+                                    "persona": "monitor", "synthesis": True}
         _save_debate_session(session)
-        _notify_debate("debate.concluded", session)
+        _save(next_job)
         return
 
     session["pending_redirect"] = ((report.get("redirect_note") or "").strip()
@@ -415,7 +480,8 @@ def _advance_debate(job: dict, report: dict) -> None:
                                session["mode"], session["goal"])
     session["status"] = "active"
     session["queued_job_id"] = next_job["id"]
-    session["next_expected"] = {"round": round_num + 1, "persona": next_persona}
+    session["next_expected"] = {"round": round_num + 1, "persona": next_persona,
+                                "synthesis": False}
     _save_debate_session(session)
     _save(next_job)  # picked up by the SAME poll loop within _POLL_S
 
@@ -432,11 +498,14 @@ def _mark_debate_stuck(job: dict, report: dict) -> None:
         return
     session["status"] = "stuck"
     session["stop_reason"] = (
-        f"turn {debate['round']} ({debate['persona']}) ended "
+        f"turn {debate['round']} ({debate['persona']}"
+        f"{', synthesis' if debate.get('synthesis') else ''}) ended "
         f"'{report.get('status', 'failed')}' — see job {job['id']}. Resume "
         "with debate_resume once fixed, or debate_cancel to give up.")
     session["current_job_id"] = job["id"]
-    session["next_expected"] = {"round": debate["round"], "persona": debate["persona"]}
+    session["next_expected"] = {"round": debate["round"],
+                                "persona": debate["persona"],
+                                "synthesis": bool(debate.get("synthesis"))}
     _save_debate_session(session)
     _notify_debate("debate.stuck", session)
 
@@ -548,9 +617,188 @@ def _run_debate_turn(agent, job: dict, workspace: Path) -> None:
         _mark_debate_stuck(job, report)
 
 
+# ── Alexa liaison turns ─────────────────────────────────────────────────────
+# A third, parallel queue sharing the same job-record mechanism (a liaison
+# turn IS an ordinary job, tagged job["liaison"]) but with its own durable
+# session store under _liaison_dir: one session.json per Alexa userId (not
+# the ephemeral per-invocation Alexa sessionId, so continuity survives
+# Alexa's own ~8s-silence session timeout), holding a bounded turn history
+# plus pending job/action pointers the alexa-bridge polls for its
+# deterministic 'status'/'confirm'/'deny' voice commands. Unlike a debate
+# turn, a liaison turn never auto-queues the next one — the NEXT turn is
+# triggered externally by the user's next utterance (mcp-tools' liaison_turn
+# call), not by anything in this worker.
+
+def _liaison_session_path(user_id: str) -> Path:
+    return _liaison_dir / f"{user_id}.json"
+
+
+def _load_liaison_session(user_id: str) -> dict | None:
+    return _load(_liaison_session_path(user_id))
+
+
+def _save_liaison_session(session: dict) -> None:
+    path = _liaison_session_path(session["user_id"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(session, indent=1, ensure_ascii=False))
+    os.replace(tmp, path)
+
+
+def _format_liaison_task(job: dict, workspace: Path) -> str:
+    user_id = job["liaison"]["user_id"]
+    session = _load_liaison_session(user_id)
+    if session is None or not session.get("history"):
+        return (f"LIAISON TURN — user {user_id}. ERROR: no session/turn "
+               "record found for this user. Skip any delegation; instead "
+               "call build_liaison_turn(status='needs_attention', "
+               "speech=\"Sorry, I didn't catch that — can you try again?\") "
+               "and finish.")
+    history = session["history"]
+    new_turn = history[-1]
+    prior = history[:-1]
+    # Staleness: a big gap since the previous turn means this is effectively
+    # a fresh conversation even though it shares a userId — drop prior turns
+    # rather than silently reinjecting context from days ago into what the
+    # user experiences as a brand new exchange.
+    if prior:
+        try:
+            prev_ts = datetime.fromisoformat(prior[-1]["ts"])
+            new_ts = datetime.fromisoformat(new_turn["ts"])
+            if ((new_ts - prev_ts).total_seconds()
+                    > config.LIAISON_SESSION_STALE_HOURS * 3600):
+                prior = []
+        except (KeyError, ValueError):
+            pass
+    window = prior[-(config.LIAISON_HISTORY_TURNS * 2):]
+    lines = [f"LIAISON TURN — user {user_id}."]
+    if window:
+        lines.append("--- Recent conversation (oldest first) ---")
+        for turn in window:
+            speaker = "User" if turn.get("role") == "user" else "You (liaison)"
+            lines.append(f"{speaker}: {turn.get('text', '')}")
+    else:
+        lines.append("(Start of a new conversation — no prior turns, or "
+                     "the previous one was too long ago to still be "
+                     "relevant.)")
+    lines.append(f"\nThe user just said: {new_turn.get('text', '')}")
+    if session.get("pending_action_id"):
+        lines.append(
+            f"\nNote: action #{session['pending_action_id']} from earlier "
+            "in this conversation is still pending the user's approval — "
+            "only mention this if directly relevant to what they just "
+            "said.")
+    lines.append(
+        "\nYOUR JOB THIS TURN: follow your procedure — answer directly, ask "
+        "ONE clarifying question, delegate to exactly one managed agent, or "
+        "call agent_dispatch for a substantial task — then finish with "
+        "build_liaison_turn(...) and final_answer(report) in the SAME code "
+        "block.")
+    return "\n".join(lines)
+
+
+_LIAISON_SALVAGE_TASK = (
+    "Your previous answer was not the required report dict. The work you "
+    "already did above still counts — do not redo it. In ONE code block: "
+    "call build_liaison_turn(...) describing what you already decided "
+    "(status, speech, and any job_id/pending_action_id/delegated_to you "
+    "already have), then actually call final_answer(report). Nothing else "
+    "— no hand-written dict literals.")
+
+
+def _parse_liaison_turn(agent, answer) -> dict:
+    """Liaison-turn counterpart to _parse_report/_parse_debate_report — kept
+    separate since a liaison turn's report shape (speech/reprompt/job_id/
+    pending_action_id/delegated_to) differs from both and the three should
+    never be cross-parsed."""
+    from .alexa_liaison import extract_liaison_turn
+
+    report = extract_liaison_turn(answer)
+    if report is None:
+        print("[jobs] liaison turn: unstructured final answer — attempting "
+             "report salvage")
+        try:
+            report = extract_liaison_turn(
+                agent.run(_LIAISON_SALVAGE_TASK, reset=False, max_steps=3))
+        except Exception as exc:  # noqa: BLE001 — salvage is best-effort
+            print(f"[jobs] liaison salvage run failed: {type(exc).__name__}: {exc}")
+            report = None
+    if report is None:
+        text = (answer if isinstance(answer, str) else str(answer)).strip()
+        print(f"[jobs] liaison turn produced no usable report; raw answer: "
+             f"{text[:2000]}")
+        report = {"status": "needs_attention",
+                  "speech": "Sorry, something went wrong on my end — try "
+                           "that again in a moment."}
+    if report.get("status") not in ("completed", "needs_clarification",
+                                    "deferred", "needs_attention"):
+        report["status"] = "completed"
+    for key in ("reprompt", "job_id", "pending_action_id", "delegated_to"):
+        report.setdefault(key, "")
+    return report
+
+
+def _finish_liaison_turn(user_id: str, report: dict) -> None:
+    """Folds this turn's outcome back into the session the alexa-bridge
+    polls: the liaison's own reply joins the history, pending_job_id tracks
+    a 'deferred' background job (cleared otherwise), and pending_action_id
+    is overwritten only when this turn actually surfaced one — clearing it
+    on every other turn would erase a still-pending approval id from an
+    earlier turn the user hasn't resolved yet."""
+    session = _load_liaison_session(user_id)
+    if session is None:
+        print(f"[jobs] liaison turn for {user_id}: session.json missing — "
+             "reply computed but could not be recorded")
+        return
+    session.setdefault("history", []).append(
+        {"role": "liaison", "text": report.get("speech", ""), "ts": _now()})
+    session["pending_job_id"] = (report.get("job_id", "")
+                                 if report.get("status") == "deferred" else "")
+    if report.get("pending_action_id"):
+        session["pending_action_id"] = report["pending_action_id"]
+    session["updated_at"] = _now()
+    _save_liaison_session(session)
+
+
+def _run_liaison_turn(agent, job: dict, workspace: Path) -> None:
+    """A liaison turn is 'answer or delegate once, reply' — no continuation
+    segments, and no auto-advance (see module section docstring above)."""
+    user_id = job["liaison"]["user_id"]
+    task = _format_liaison_task(job, workspace)
+    try:
+        answer = agent.run(task, reset=True,
+                           additional_args={"workspace": str(workspace)})
+        report = _parse_liaison_turn(agent, answer)
+    except Exception as exc:  # noqa: BLE001 — a failed run must land in the record
+        job.update(status="failed", finished_at=_now(),
+                   error=f"{type(exc).__name__}: {exc}")
+        print(f"[jobs] liaison turn {job['id']} failed:\n{traceback.format_exc()}")
+        _save(job)
+        _finish_liaison_turn(user_id, {
+            "status": "failed",
+            "speech": "Sorry, something went wrong on my end — try that "
+                     "again in a moment."})
+        return
+
+    job.update(status=report["status"], report=report, finished_at=_now())
+    _save(job)
+    # Deliberately no _notify() call — unlike a background job or debate
+    # turn, the user is live on the line waiting for this reply; a push
+    # notification for every ordinary voice exchange would be noise. A
+    # 'deferred' turn's underlying agent_dispatch job still notifies on its
+    # own completion through the normal job path above.
+    _finish_liaison_turn(user_id, report)
+
+
 def _run_job(agents: dict, job: dict) -> None:
     is_debate = bool(job.get("debate"))
-    agent = agents["debate_manager"] if is_debate else agents["manager"]
+    is_liaison = bool(job.get("liaison"))
+    if is_debate:
+        agent = agents["debate_manager"]
+    elif is_liaison:
+        agent = agents["alexa_liaison"]
+    else:
+        agent = agents["manager"]
     workspace = _jobs_dir / job["id"] / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     job.update(status="running", started_at=_now(),
@@ -575,6 +823,9 @@ def _run_job(agents: dict, job: dict) -> None:
 
     if is_debate:
         _run_debate_turn(agent, job, workspace)
+        return
+    if is_liaison:
+        _run_liaison_turn(agent, job, workspace)
         return
 
     while True:
@@ -635,16 +886,20 @@ def _recover_stale() -> None:
 
 
 def _worker_loop() -> None:
-    # Deferred import: both agents need mcp-tools reachable for tool loading.
+    # Deferred import: all three need mcp-tools reachable for tool loading.
+    from .alexa_liaison import build_alexa_liaison_agent
     from .debate_manager import build_debate_manager_agent
     from .manager import build_manager_agent
 
     _jobs_dir.mkdir(parents=True, exist_ok=True)
     _debates_dir.mkdir(parents=True, exist_ok=True)
+    _liaison_dir.mkdir(parents=True, exist_ok=True)
     _recover_stale()
     manager = build_manager_agent()  # built once; reused with reset=True
     debate_manager = build_debate_manager_agent()  # same, for debate turns
-    agents = {"manager": manager, "debate_manager": debate_manager}
+    alexa_liaison = build_alexa_liaison_agent()  # same, for liaison turns
+    agents = {"manager": manager, "debate_manager": debate_manager,
+              "alexa_liaison": alexa_liaison}
     _write_roster(manager)
     print(f"[jobs] worker ready — polling {_jobs_dir} every {_POLL_S}s")
     while True:

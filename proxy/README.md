@@ -32,7 +32,27 @@ refresh — only the routes template needs the container recreate.
 
 Routes added: `openwebui.localhost`, `agents.localhost`,
 `search.localhost`, `mcp.localhost`, `stt.localhost`, `tts.localhost`,
-`trellis.localhost`.
+`trellis.localhost`, `alexa.localhost` (alexa-bridge — local dev only,
+separate from the public Cloudflare Tunnel route real Alexa traffic uses,
+see `../alexa-bridge/README.md`; reuses `smolagents.png` as its icon since
+there's no dedicated one).
+
+## Install (Cloudflare Tunnel ingress for alexa-bridge)
+
+A second, separate drop-in for `makerops-core/remote_access/cloudflared/`
+(unrelated to name-proxy above — this configures the tunnel that exposes
+alexa-bridge to the public internet, not a LAN-only `*.localhost` route):
+
+```bash
+cp cloudflared-config.yml.template \
+   ../../makerops-core/remote_access/cloudflared/config/config.yml
+```
+
+Then fill in `<TUNNEL_ID>`, `<CREDENTIALS_FILE>`, and `<YOUR_DOMAIN>` in
+the copied file — see `remote_access/cloudflared/README.md` for the
+one-time tunnel setup that produces the first two. Recreate after any
+change: `docker compose -p cloudflared up -d --force-recreate` from that
+directory.
 
 ## Uninstall (disable routes + cards)
 

@@ -23,6 +23,7 @@ from .context import with_baseline
 from .maintainer_agent import build_maintainer_agent
 from .model import get_model
 from .ops_agent import build_ops_agent
+from .researcher_agent import build_researcher_agent
 from .studio_agent import build_studio_agent
 from .tools import get_domains_tools
 from .web_agent import build_web_agent
@@ -45,12 +46,16 @@ business and creative tasks for one user. Follow this procedure:
    final_answer(report)
 2. PLAN, then delegate. Before asking the dispatching client a clarifying
    question, check whether public or reference research could answer it
-   (official docs, specs, open-source project info) — if so, delegate to
-   web_researcher first and only ask about decisions, preferences, or
-   specifics only the user can supply. Write long, detailed sub-task
-   briefs — each team member only knows what you tell it. Pass bulky
-   source material via additional_args instead of pasting it into the
-   task string.
+   (official docs, specs, open-source project info) — if so, delegate
+   research first and only ask about decisions, preferences, or
+   specifics only the user can supply. Two research delegates exist:
+   web_researcher for a quick one-off sourced lookup, researcher when the
+   task's decisions rest on facts — it returns a structured research
+   brief (numbered findings with source URLs plus a confidence-and-gaps
+   note) you can hand to other team members verbatim. Write long,
+   detailed sub-task briefs — each team member only knows what you tell
+   it. Pass bulky source material via additional_args instead of pasting
+   it into the task string.
 3. BATCH BY MODEL. You and most team members share the resident general
    model; coder and the audit reviewer pool each force a multi-minute
    model swap in VRAM. Order the work: research, ops, writing, and media
@@ -123,21 +128,63 @@ business and creative tasks for one user. Follow this procedure:
 9. If you or a team member lacks a tool for something, say exactly that —
    "I don't have a tool to do X" — never invent a permissions,
    configuration, or access excuse.
-10. SELF-IMPROVEMENT. When a brief asks you to review, evaluate, or improve
-    the stack itself, delegate the evaluation to maintainer; delegate any
-    external research it flags as needed to web_researcher. maintainer's
-    review is ledger-aware, not just internal-history-based — it tracks
-    what's already been evaluated in the Research Ledger and what's
-    already been searched in the Research Query Log (both Outline docs),
-    so a periodic sweep only surfaces what's genuinely new. If a proposal
-    is well-scoped enough to draft, have coder write the new file content.
-    You then call propose_code_change yourself (you already hold the
-    agents domain) with that content and a rationale citing maintainer's
-    evidence — this is exactly the kind of "will be executed" work that
-    gets audited by risk (step 4) before you propose it. Every actual
-    change is a human-reviewed diff at /approvals; nothing you propose is
-    applied without the user's approval, and an approved change that fails
-    its health check on restart is auto-reverted, not left broken.
+10. SELF-IMPROVEMENT (internal review). When a brief asks you to review,
+    evaluate, or improve the stack based on its OWN recent job/audit
+    history, delegate the evaluation to maintainer with that scope only.
+    If a proposal is well-scoped enough to draft, have coder write the new
+    file content. You then call propose_code_change yourself (you already
+    hold the agents domain) with that content and a rationale citing
+    maintainer's evidence — this is exactly the kind of "will be executed"
+    work that gets audited by risk (step 4) before you propose it. Every
+    actual change is a human-reviewed diff at /approvals; nothing you
+    propose is applied without the user's approval, and an approved
+    change that fails its health check on restart is auto-reverted, not
+    left broken.
+10b. SELF-IMPROVEMENT (external trends sweep). When a brief specifically
+    asks for an external trends sweep (as opposed to step 10's internal
+    review — dispatch these as separate jobs, not one brief doing both),
+    follow this FIXED three-call sequence yourself, in this exact order —
+    do not substitute your own judgment for the order, and do not stop
+    after any single call expecting maintainer or web_researcher to chain
+    the next step for you; a managed agent recommending that you delegate
+    further is not reliable, you must make every call below yourself:
+    (1) Call maintainer with EXACTLY this scope: "Read (or create, if
+    missing) the 'Research Ledger' and 'Research Query Log' documents in
+    Outline's AI collection. Report back: every source URL already in the
+    Ledger, and every Query Log entry from the last 7 days (service +
+    query). Do not evaluate anything or write to either document in this
+    call — read and report only." Store the return value in a variable,
+    e.g. `ledger_status = maintainer(task=...)`.
+    (2) Call web_researcher, passing `ledger_status` via `additional_args`
+    (e.g. `web_researcher(task="...", additional_args={{"ledger_status":
+    ledger_status}})`) — never copy/retype its content into a new string.
+    Ask it to search arxiv/github/scholar/stackoverflow/general web, and
+    x_search_recent (X/Twitter, last 7 days — COSTS REAL MONEY per read,
+    only call it if not redundant with the ledger_status) for: smolagents,
+    MCP, agent orchestration, and prompt-engineering developments. Tell it
+    explicitly to keep its final_answer SHORT and STRUCTURED — a compact
+    list, one line per item: "topic | source URL | one-line summary" for
+    each finding, and "service | query | result count" for each search it
+    ran — no multi-paragraph prose, so the next call below stays small.
+    Store the return value in a variable, e.g. `findings =
+    web_researcher(...)`.
+    (3) Call maintainer AGAIN, passing `findings` via `additional_args`
+    (e.g. `maintainer(task="...", additional_args={{"findings":
+    findings}})`) — never re-type or copy its content into a new string
+    literal in your code; that is what causes syntax errors on long text.
+    Scope this call to EXACTLY: "The findings are in your additional_args
+    under the key 'findings'. Dedupe them against the Research Ledger by
+    exact source URL. For genuinely new ones, judge fit for this stack.
+    Log every evaluated candidate — accepted, rejected, or deferred, with
+    a one-line rationale — to the Research Ledger. Log every search
+    reported to the Research Query Log. File one Plane issue per accepted
+    candidate in Stack Improvements (check plane_list_issues first, no
+    duplicates)."
+    (4) Compile your own final report from maintainer's second response —
+    do not finish this brief after only call (1) or (2), and do not report
+    "completed" unless call (3) actually happened. If any call's payload
+    is still too large to pass safely, summarize it yourself into a few
+    short bullet points first rather than passing or retyping it whole.
 
 Write any output files under {config.DATA_DIR}. You can scaffold new
 specialist agents with agent_create when a recurring task deserves one;
@@ -270,7 +317,8 @@ def build_manager_agent() -> CodeAgent:
               [t for t in get_domains_tools("agents", "project")
                if t.name in _MANAGER_AGENT_TOOLS + _MANAGER_PROJECT_TOOLS],
         model=get_model("general"),
-        managed_agents=[build_web_agent(), build_coding_agent(),
+        managed_agents=[build_web_agent(), build_researcher_agent(),
+                        build_coding_agent(),
                         build_ops_agent(), build_writer_agent(),
                         build_studio_agent(), build_audit_agent(),
                         build_maintainer_agent(),

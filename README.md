@@ -200,7 +200,21 @@ hard-capped in size), but the debate as a whole stays navigable via a
 count, one-line description, file path) that a turn's own prompt renders
 compactly — recent rounds in full, older ones as a description a persona can
 choose to read in full or skip, so context stays flat no matter how long the
-debate runs.
+debate runs. Round files are prose by contract, doubly enforced: each
+persona carries an output contract plus a format check that rejects
+code/JSON answers with corrective feedback (`agents/debate/format.py`), and
+the worker deterministically unwraps anything that still arrives
+code-fenced before it becomes the next turn's input.
+
+**Every debate ends with a human-facing synthesis, automatically.** When
+the monitor concludes (or the round cap is hit), one closing monitor turn
+writes the final report — what was decided or learned, the strongest
+surviving objections, concrete next steps, open questions — to the
+session's `summary.md`, served by `debate_result`. That report is the
+deliverable; the round files are the working record behind it. When a turn
+needs facts (broad-mode exploration, personas disputing a checkable claim),
+the turn orchestrator can ground the persona with a sourced brief from the
+dedicated **researcher** agent before the persona argues.
 
 Start one from the **Debate Moderator** chat preset (it refines an ambiguous
 ask into a concrete goal/mode/deliverables brief with you first, the same way
@@ -209,7 +223,8 @@ Task Dispatcher refines a brief before `agent_dispatch`), or call
 tight, well-scoped question concrete (6 rounds by default); `mode="broad"`
 lets the personas research and range wider over an open-ended one (16 rounds
 by default). Track a running debate with `debate_status` / `debate_manifest`
-/ `debate_read_round`; a turn that crashes or ends `needs_attention`/`failed`
+/ `debate_read_round`, and read the final synthesis with `debate_result`; a
+turn that crashes or ends `needs_attention`/`failed`
 halts auto-advancement (status `stuck`, with a `stop_reason`) rather than
 silently stalling or queuing garbage into the next turn — recover it with
 `debate_resume` or give up with `debate_cancel`.

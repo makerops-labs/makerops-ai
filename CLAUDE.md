@@ -114,7 +114,16 @@ reviewer pools) — see the "Debate system" bullet below.
   (`debate_cancel`). Entrepreneur/monitor personas default to the
   `qwen3.6:35b-64k` lead (same as Task Dispatcher) — stop `trellis` first,
   same RAM-starvation gotcha as opening that chat, since an unattended
-  debate hits it just as hard.
+  debate hits it just as hard. Round files are prose by a doubly-enforced
+  contract (`agents/debate/format.py`: prompt block + `final_answer_checks`
+  rejection, plus `jobs.py`'s `_clean_round_text` fence-unwrap backstop) —
+  local models otherwise relay raw python/JSON that poisons the next
+  turn's input. Every debate ends with ONE auto-queued closing monitor
+  turn in SYNTHESIS MODE (status `concluding`) that writes the
+  human-facing `summary.md`, served by `debate_result` — that file is the
+  deliverable; rounds are the working record. Turn orchestration can also
+  consult the `researcher` agent (at most once, before the persona) for a
+  sourced brief.
 
 ## Dependencies on makerops-core (sibling checkout `../makerops-core`)
 

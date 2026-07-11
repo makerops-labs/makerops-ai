@@ -59,3 +59,12 @@ server {
     server_name trellis.localhost ~^trellis\..+;
     location / { proxy_pass http://host.docker.internal:8094; }
 }
+
+# ── Alexa Bridge — Amazon Alexa Skill Backend ────────────────────────────────
+# Local dev route only — separate from the public Cloudflare Tunnel route
+# (makerops-core/remote_access/cloudflared/) real Alexa requests use.
+server {
+    listen      80;
+    server_name alexa.localhost ~^alexa\..+;
+    location / { proxy_pass http://host.docker.internal:8103; }
+}

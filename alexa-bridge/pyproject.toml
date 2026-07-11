@@ -1,0 +1,24 @@
+[project]
+name = "makerops-alexa-bridge"
+version = "0.1.0"
+description = "Amazon Alexa custom-skill backend: verifies requests, routes deterministic voice commands directly, forwards everything else to the smolagents alexa_liaison agent via mcp-tools"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.30",
+    "httpx>=0.27",
+    "fastmcp>=2.10,<3",
+    "ask-sdk-core>=1.19",
+    "ask-sdk-model>=1.82",
+    # NOT ask-sdk-webservice-support: its RequestVerifier depends on
+    # certvalidator -> oscrypto, which fails to import against OpenSSL 3.x
+    # version strings with a two-digit patch (e.g. this image's "3.0.13") —
+    # confirmed locally, not a theoretical concern. alexa/verify.py
+    # reimplements the same algorithm directly on cryptography's own
+    # modern x509 verification API instead. See that module's docstring.
+    "cryptography>=42",
+    "certifi>=2024",
+]
+
+[tool.uv]
+package = false

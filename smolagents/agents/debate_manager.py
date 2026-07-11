@@ -19,6 +19,7 @@ from . import config
 from .context import with_baseline
 from .debate import build_critic_agent, build_entrepreneur_agent, build_monitor_agent
 from .model import get_model
+from .researcher_agent import build_researcher_agent
 
 _DEBATE_PROCEDURE = """You orchestrate ONE turn of a structured, file-relayed
 debate between three personas: entrepreneur, critic, and monitor. You are
@@ -34,22 +35,36 @@ the full text of the most recent round(s). Follow this procedure:
    read it with pathlib — Path(<its 'path' from the manifest>), resolved
    under the debate directory named in the task text. Do not read every
    round; that defeats the point of the manifest.
+2b. If this turn clearly hinges on facts nobody has established yet — a
+   broad-mode exploration turn, or the last rounds show the personas
+   disputing a checkable claim (a market size, a price, whether a
+   comparable product exists) — you may call the 'researcher' sub-agent AT
+   MOST ONCE before the persona, with the specific question(s), and append
+   its research brief to the persona's sub-task labeled 'RESEARCH BRIEF
+   (from the researcher, sourced)'. Skip this when the turn is
+   argumentative rather than factual, and always for monitor checkpoint
+   turns — the monitor judges process, not facts.
 3. Call the named persona sub-agent EXACTLY ONCE with a task string
    containing everything relevant (goal, mode, constraints, manifest,
-   recent rounds, any excerpt from step 2, any monitor redirect note). Do
-   not write the persona's argument yourself and do not call any other
-   sub-agent.
+   recent rounds, any excerpt from step 2, any research brief from step
+   2b, any monitor redirect note). Do not write the persona's argument
+   yourself and do not call any other sub-agent.
 4. Relay the persona's answer back VERBATIM via build_debate_report — never
    summarize, edit, correct, or add commentary. The persona's answer must
    open with a one-line abstract (25 words or fewer), a blank line, then
-   its full argument; put the abstract in build_debate_report's abstract
-   parameter and the whole answer in full_text.
+   its full argument in plain markdown prose (never code or JSON); put the
+   abstract in build_debate_report's abstract parameter and the whole
+   answer in full_text. If the persona answered with code, JSON, or
+   anything that is not prose, send it back ONCE with the instruction to
+   rewrite per its output contract before you relay.
 5. Only for the 'monitor' persona: its answer must end with a line exactly
    'VERDICT: continue', 'VERDICT: redirect: <note>', or 'VERDICT: conclude'.
    Copy the verdict word ('continue', 'redirect', or 'conclude') into
    build_debate_report's verdict parameter and any redirect note into
    redirect_note. For entrepreneur/critic turns leave verdict as the
-   default 'continue'.
+   default 'continue'. Exception: when the task says SYNTHESIS MODE, the
+   monitor writes the final human-facing report with no verdict line —
+   relay it with verdict='conclude'.
 6. Always finish with build_debate_report(...) then final_answer(report) in
    the SAME code block. If the persona errors or answers something
    unusable, set status to 'needs_attention' and explain in full_text —
@@ -122,7 +137,7 @@ def build_debate_manager_agent() -> CodeAgent:
         tools=[build_debate_report],
         model=get_model("general"),
         managed_agents=[build_entrepreneur_agent(), build_critic_agent(),
-                        build_monitor_agent()],
+                        build_monitor_agent(), build_researcher_agent()],
         additional_authorized_imports=["pathlib"],
         instructions=with_baseline(_DEBATE_PROCEDURE),
         planning_interval=config.PLANNING_INTERVAL,

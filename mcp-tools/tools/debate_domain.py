@@ -23,11 +23,13 @@ mcp = FastMCP(
         "(entrepreneur, critic, monitor) that explores or stress-tests an "
         "idea over several turns, running in the background like the agent "
         "job queue — turns run one at a time, in series, each queued "
-        "automatically once the previous one finishes. debate_start begins "
-        "one; debate_status/debate_manifest/debate_read_round/debate_list "
-        "track it; debate_resume/debate_cancel handle a stuck or unwanted "
-        "session. Refine the goal with the user into a concrete brief "
-        "before starting — the personas cannot ask questions mid-debate."))
+        "automatically once the previous one finishes, and every debate "
+        "ends with an automatic human-facing synthesis (debate_result). "
+        "debate_start begins one; debate_status/debate_manifest/"
+        "debate_read_round/debate_list track it; debate_resume/"
+        "debate_cancel handle a stuck or unwanted session. Refine the goal "
+        "with the user into a concrete brief before starting — the "
+        "personas cannot ask questions mid-debate."))
 required_env = None  # writes to the bind mount, no token
 
 _MODES = ("narrow", "broad")
@@ -150,6 +152,8 @@ def debate_status(session_id: str) -> str:
         if job.get("status") == "running" and job.get("heartbeat_ts"):
             note = f" (last activity {int(time.time() - job['heartbeat_ts'])}s ago)"
         lines.append(f"Current turn job {job['id']}: {job['status']}{note}")
+    if session["status"] == "concluded":
+        lines.append(f"Final synthesis: debate_result('{session_id}')")
     lines.append(f"Full manifest: debate_manifest('{session_id}') · "
                 f"inbox: {config.MCPTOOLS_PUBLIC_URL}/inbox")
     return "\n".join(lines)
@@ -182,9 +186,36 @@ def debate_read_round(session_id: str, round: int) -> str:
 
 
 @mcp.tool
+def debate_result(session_id: str) -> str:
+    """The debate's final human-facing synthesis — what was decided or
+    learned, the strongest surviving objections, and recommended next
+    steps, written automatically by the monitor as the debate's closing
+    turn. This is the one document to show the user; the per-round files
+    (debate_read_round) are the underlying working record. Errors if the
+    debate hasn't finished its synthesis yet."""
+    session = debate_store.get_session(session_id)
+    if session is None:
+        return f"ERROR: no debate named '{session_id}'."
+    summary = debate_store.read_summary(session_id)
+    if summary is not None:
+        return summary
+    status = session.get("status")
+    if status == "cancelled":
+        reason = session.get("stop_reason") or "no reason recorded"
+        return (f"Debate '{session_id}' was cancelled before producing a "
+               f"final synthesis ({reason}). Its rounds are still readable "
+               f"with debate_manifest/debate_read_round.")
+    return (f"Debate '{session_id}' has not produced its final synthesis "
+           f"yet (status: {status}). The synthesis is written "
+           f"automatically as the closing turn once the debate ends — "
+           f"check debate_status('{session_id}').")
+
+
+@mcp.tool
 def debate_list(status: str = "") -> str:
     """Recent debates, newest first. status filters to one of: active,
-    stuck, concluded, cancelled. Empty lists everything."""
+    concluding (rounds done, final synthesis being written), stuck,
+    concluded, cancelled. Empty lists everything."""
     if not debate_store.available():
         return "ERROR: the debate store is not mounted."
     sessions = debate_store.list_sessions(status=status)
@@ -201,19 +232,23 @@ def _do_debate_resume(params: dict) -> str:
     if session is None:
         return f"ERROR: no debate named '{params['session_id']}'."
     next_expected = session["next_expected"]
+    synthesis = bool(next_expected.get("synthesis"))
     job = jobs_store.create_job(
         brief={"objective": f"Debate turn {next_expected['round']} "
-                            f"({next_expected['persona']}), resumed: "
-                            f"{session['goal'][:120]}",
-              "deliverables": ["round argument text"]},
+                            f"({next_expected['persona']}"
+                            f"{', synthesis' if synthesis else ''}), "
+                            f"resumed: {session['goal'][:120]}",
+              "deliverables": ["final human-facing synthesis" if synthesis
+                               else "round argument text"]},
         source="debate",
         debate={"session_id": session["id"], "round": next_expected["round"],
-               "persona": next_expected["persona"]})
-    debate_store.update_session(session["id"], status="active",
+               "persona": next_expected["persona"], "synthesis": synthesis})
+    debate_store.update_session(session["id"],
+                                status="concluding" if synthesis else "active",
                                 queued_job_id=job["id"])
     return (f"Resumed debate {session['id']} — round "
-           f"{next_expected['round']} ({next_expected['persona']}) is "
-           f"queued as {job['id']}.")
+           f"{next_expected['round']} ({next_expected['persona']}"
+           f"{', synthesis' if synthesis else ''}) is queued as {job['id']}.")
 
 
 policy.register_executor("debate", "debate_resume", _do_debate_resume)

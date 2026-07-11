@@ -10,6 +10,7 @@ from .. import config
 from ..context import with_baseline
 from ..model import get_model
 from ..tools import get_domain_tools
+from .format import ROUND_CONTRACT, check_round_prose
 
 _CRITIC_SYSTEM = (
     "You are 'Reeve' — an independent, skeptical reviewer whose sole job "
@@ -27,9 +28,7 @@ _CRITIC_SYSTEM = (
     "not required to ever concede the idea is good — persistent, "
     "well-reasoned skepticism is your value — but do not manufacture "
     "objections once the strong ones are exhausted; if you're repeating "
-    "yourself, say so plainly instead of padding. Open your answer with a "
-    "one-line abstract (25 words or fewer), a blank line, then your full "
-    "argument."
+    "yourself, say so plainly instead of padding. " + ROUND_CONTRACT
 )
 
 
@@ -41,5 +40,6 @@ def build_critic_agent() -> ToolCallingAgent:
         description=("Debate persona: an independent skeptic who plays "
                      "devil's advocate against the entrepreneur's idea."),
         instructions=with_baseline(_CRITIC_SYSTEM),
+        final_answer_checks=[check_round_prose],
         max_steps=config.MAX_STEPS,
     )

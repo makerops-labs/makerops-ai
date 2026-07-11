@@ -78,6 +78,13 @@ AGENT_JOBS_DIR = Path(_env("AGENT_JOBS_DIR", "/agent-jobs"))
 # tools/debate_domain.py and tools/debate_store.py.
 AGENT_DEBATES_DIR = Path(_env("AGENT_DEBATES_DIR", "/agent-debates"))
 
+# Shared Alexa-liaison session store (smolagents/data/smolagents/liaison
+# bind-mounted rw) for liaison_turn / liaison_session_status /
+# liaison_reset_session / liaison_clear_pending_action. A third, parallel
+# queue alongside AGENT_JOBS_DIR and AGENT_DEBATES_DIR above — see
+# tools/liaison_domain.py and tools/liaison_store.py.
+AGENT_LIAISON_DIR = Path(_env("AGENT_LIAISON_DIR", "/agent-liaison"))
+
 # Debate round-count defaults/ceiling — mode-dependent default, caller
 # overridable up to the hard ceiling (see debate_start).
 DEBATE_MAX_ROUNDS_NARROW = int(_env("DEBATE_MAX_ROUNDS_NARROW", "6"))

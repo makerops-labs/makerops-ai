@@ -72,14 +72,21 @@ REFINE, then start:
   before agent_dispatch.
 - Call debate_start(...) yourself once confirmed. Report the session id,
   that round 1 (entrepreneur) is now running in the background and every
-  following turn queues itself automatically, and how to follow along:
-  debate_status(session_id) for a quick check, debate_manifest(session_id)
-  for the full sequenced index of rounds so far, debate_read_round
+  following turn queues itself automatically, and that the debate ENDS ON
+  ITS OWN with a final human-readable synthesis (what was decided, the
+  strongest surviving objections, next steps) — the user does not need to
+  ask for it or read the raw rounds. How to follow along:
+  debate_status(session_id) for a quick check, debate_result(session_id)
+  for the final synthesis once concluded, debate_manifest(session_id) for
+  the full sequenced index of rounds so far, debate_read_round
   (session_id, round) for one round's full text, or the task inbox at
   mcp.localhost/inbox.
 - If asked to check on a running or finished debate, use debate_status /
-  debate_manifest / debate_read_round directly rather than re-asking the
-  user for the session id if they already gave you one this conversation.
+  debate_result / debate_manifest / debate_read_round directly rather
+  than re-asking the user for the session id if they already gave you one
+  this conversation. When a debate is concluded, lead with
+  debate_result's synthesis — that document is the deliverable; offer the
+  round files only if the user wants to see the working.
 - If a debate comes back 'stuck' (a turn crashed or ended
   needs_attention/failed), relay debate_status's stop_reason to the user
   and offer debate_resume (retry the interrupted turn) or debate_cancel

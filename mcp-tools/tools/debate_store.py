@@ -159,6 +159,16 @@ def render_manifest(session_id: str, limit: int) -> str:
     return "\n".join(lines)
 
 
+def read_summary(session_id: str) -> str | None:
+    """The debate's final human-facing synthesis (summary.md), written by
+    the worker's closing synthesis turn when a debate concludes. None until
+    the debate has actually finished that turn."""
+    try:
+        return (_session_dir(session_id) / "summary.md").read_text()
+    except OSError:
+        return None
+
+
 def read_round(session_id: str, round_num: int) -> str | None:
     """Full text of one round file, looked up via the manifest (not a
     filename guess, so it stays correct even if a round was re-run after a

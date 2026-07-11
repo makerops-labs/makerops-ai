@@ -1,0 +1,39 @@
+# alexa-bridge — Amazon Alexa custom-skill backend
+# Project name: alexa-bridge  (managed by start.sh / stop.sh)
+#
+# Exposes:
+#   8103/tcp — POST /alexa (the skill webhook), GET /healthz
+#
+# This is the ONE thing in this stack meant to be reachable from the public
+# internet — via a Cloudflare Tunnel in makerops-core/remote_access/
+# cloudflared/, never a direct port-forward. Everything it talks to
+# (mcp-tools' liaison/agents domains, the /approvals route) stays
+# LAN-only — see docs/alexa-voice-setup.md for the full setup.
+
+services:
+  alexa-bridge:
+    build:
+      context: .
+      # WSL2: the host resolver is unreachable from bridge networks during
+      # build, breaking package downloads.
+      network: host
+    container_name: alexa-bridge
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file: .env
+    volumes:
+      # Code is bind-mounted so edits only need a container restart;
+      # rebuild the image only when dependencies change.
+      - ./main.py:/app/main.py:ro
+      - ./alexa:/app/alexa:ro
+    ports:
+      - "${ALEXA_BRIDGE_PORT_HOST:-8103}:8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

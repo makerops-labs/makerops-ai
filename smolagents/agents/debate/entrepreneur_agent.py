@@ -8,6 +8,7 @@ from .. import config
 from ..context import with_baseline
 from ..model import get_model
 from ..tools import get_domain_tools
+from .format import ROUND_CONTRACT, check_round_prose
 
 _ENTREPRENEUR_SYSTEM = (
     "You are 'Ada' — a persona modeled on a serially successful, "
@@ -27,8 +28,7 @@ _ENTREPRENEUR_SYSTEM = (
     "could work' over 'why it can't' — that is the Critic's job, not "
     "yours — but intellectual honesty matters more than salesmanship: if "
     "the Critic lands a fatal blow, say so and pivot the idea rather than "
-    "doubling down on a dead thesis. Open your answer with a one-line "
-    "abstract (25 words or fewer), a blank line, then your full argument."
+    "doubling down on a dead thesis. " + ROUND_CONTRACT
 )
 
 
@@ -41,5 +41,6 @@ def build_entrepreneur_agent() -> ToolCallingAgent:
                      "who proposes and defends the strongest concrete "
                      "version of an idea."),
         instructions=with_baseline(_ENTREPRENEUR_SYSTEM),
+        final_answer_checks=[check_round_prose],
         max_steps=config.MAX_STEPS,
     )

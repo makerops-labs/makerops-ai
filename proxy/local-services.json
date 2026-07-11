@@ -6,6 +6,7 @@
     { "name": "MCP Tools", "desc": "LLM Tool Server & Write Approvals", "sub": "mcp", "readme": "https://github.com/makerops-labs/makerops-ai/blob/main/mcp-tools/README.md", "icon": "local-icons/mcp.png" },
     { "name": "Speech STT", "desc": "Speech-to-Text (Whisper)", "sub": "stt", "readme": "https://github.com/makerops-labs/makerops-ai/blob/main/speech/README.md", "icon": "local-icons/speech-stt.png" },
     { "name": "Speech TTS", "desc": "Text-to-Speech (Kokoro)", "sub": "tts", "readme": "https://github.com/makerops-labs/makerops-ai/blob/main/speech/README.md", "icon": "local-icons/speech-tts.png" },
-    { "name": "TRELLIS", "desc": "Image-to-3D Generation", "sub": "trellis", "readme": "https://github.com/makerops-labs/makerops-ai/blob/main/trellis/README.md", "icon": "local-icons/trellis.png" }
+    { "name": "TRELLIS", "desc": "Image-to-3D Generation", "sub": "trellis", "readme": "https://github.com/makerops-labs/makerops-ai/blob/main/trellis/README.md", "icon": "local-icons/trellis.png" },
+    { "name": "Alexa Bridge", "desc": "Amazon Alexa Skill Backend", "sub": "alexa", "readme": "https://github.com/makerops-labs/makerops-ai/blob/main/alexa-bridge/README.md", "icon": "local-icons/smolagents.png" }
   ]
 }

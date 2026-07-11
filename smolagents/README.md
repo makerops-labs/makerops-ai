@@ -2,12 +2,13 @@
 
 smolagents is Hugging Face's minimal agent framework. This service is both a **Python workspace** for authoring your own agents and a **Docker service** that runs them behind a Gradio chat UI — all backed by the local Ollama server, so nothing leaves the host.
 
-It ships with eight starter agents (models follow the lead-per-domain hierarchy in [README.md](../README.md)):
+It ships with nine starter agents (models follow the lead-per-domain hierarchy in [README.md](../README.md)):
 
 | Agent | Model | Role |
 | --- | --- | --- |
 | `manager` | `qwen3.5:9b-64k` | Orchestrator served by the UI and the job worker — validates briefs, plans, delegates, audits by risk, reports (see "Orchestration") |
-| `web_researcher` | `qwen3.5:9b-64k` | Web search + page reading (mcp-tools web domain, SearXNG-backed) |
+| `web_researcher` | `qwen3.5:9b-64k` | Web search + page reading (mcp-tools web domain, SearXNG-backed) — quick one-off sourced lookups |
+| `researcher` | `qwen3.5:9b-64k` | Structured research briefs — numbered findings each attributed to a source URL, plus a confidence-and-gaps note. Delegated to by the manager and by debate turns; the Researcher Open WebUI preset is the direct-chat equivalent |
 | `coder` | `qwen3.6:35b` | Writes and executes Python for data work and programming tasks |
 | `ops` | `qwen3.5:9b-64k` | Operates the business stack via mcp-tools (wiki, inventory, projects, automation, helpdesk) |
 | `writer` | `qwen3.5:9b-64k` | Written deliverables: docs, reports, summaries, marketing copy; publishes durable docs to Outline |
@@ -267,33 +268,64 @@ concrete, evidenced failure patterns (never vague impressions — a pattern
 needs at least two instances or one clearly reproducible cause), writes an
 evaluation report to Outline's **AI** collection, and files one Plane issue
 per proposed improvement in the **Stack Improvements** project. It has no
-web access itself — external research it flags gets delegated to
-`web_researcher` by the manager, same as any other sub-task.
+web access itself.
 
-On every run it also does an **external trends sweep**, so the loop isn't
-limited to problems already visible in this stack's own history: it reads
-(or, on first run, creates) two append-only Outline docs in the **AI**
-collection — the **Research Ledger** (one entry per evaluated external
-finding: topic, source URL, decision of integrated/rejected/deferred,
-rationale) and the **Research Query Log** (fact-only: timestamp, service,
-query, result count, no decision) — then asks the manager to have
-`web_researcher` sweep arxiv/github/scholar/stackoverflow/general web and
-`x_search_recent` (X/Twitter, only if `X_API_BEARER_TOKEN` is configured —
-this call **costs real money per read**, no free tier) for smolagents/MCP/
-agent-orchestration/prompt-engineering developments. `web_researcher`
-checks the Query Log first and skips or varies any query already run
-against the same service within that service's recency window (7 days for
-X), so a weekly sweep doesn't re-pay for or re-evaluate the same data.
-Findings are deduped against the Research Ledger by exact source URL;
-genuinely new ones are judged for fit with this specific stack (strongest
-when tied to an observed internal pattern, but a purely prospective "this
-is a widely-recommended technique we don't use yet" finding is fine too,
-labeled as such) and every evaluated candidate — accepted, rejected, or
-deferred — gets logged to the Ledger, which is what lets the next run's
-dedup pass actually skip what's already been considered instead of
-re-litigating it. Accepted candidates get a Plane issue exactly like an
-internal-pattern finding; everything downstream (coder drafts, gated
-`propose_code_change`, auto-redeploy) is identical either way.
+`maintainer` never chains its own delegation — dispatch internal review and
+the external trends sweep as **two separate `agent_dispatch` briefs** (a
+first live end-to-end test found that relying on `maintainer`'s prose to
+get the manager to make a follow-up call to `web_researcher` was
+unreliable: the manager would sometimes skip the delegation and report
+"completed" with a fabricated excuse anyway). The external sweep is instead
+a **fixed three-call sequence the manager itself executes** (`manager.py`
+step 10b), so the loop isn't limited to problems already visible in this
+stack's own history without depending on the small model noticing it
+should delegate further:
+
+1. Manager calls `maintainer` scoped to read-only: find or bootstrap two
+   append-only Outline docs in the **AI** collection — the **Research
+   Ledger** (one entry per evaluated external finding: topic, source URL,
+   decision of integrated/rejected/deferred, rationale) and the
+   **Research Query Log** (fact-only: timestamp, service, query, result
+   count, no decision) — and report back their contents. No evaluation or
+   writes happen in this call.
+2. Manager calls `web_researcher` directly (not through `maintainer`),
+   pasting in what was just read back, to sweep arxiv/github/scholar/
+   stackoverflow/general web and `x_search_recent` (X/Twitter, only if
+   `X_API_BEARER_TOKEN` is configured — this call **costs real money per
+   read**, no free tier) for smolagents/MCP/agent-orchestration/
+   prompt-engineering developments, skipping or varying anything that
+   matches a query already run against the same service within its
+   recency window (7 days for X).
+3. Manager calls `maintainer` again, pasting in `web_researcher`'s
+   findings, scoped to evaluate: dedupe by exact source URL against the
+   Research Ledger; for genuinely new findings, judge fit for this
+   specific stack (strongest when tied to an observed internal pattern,
+   but a purely prospective "this is a widely-recommended technique we
+   don't use yet" finding is fine too, labeled as such); log every
+   evaluated candidate — accepted, rejected, or deferred — to the Ledger
+   (what lets the next run's dedup pass actually skip what's already been
+   considered); log every search to the Query Log; file one Plane issue
+   per accepted candidate exactly like an internal-pattern finding.
+
+Everything downstream of an accepted candidate (coder drafts, gated
+`propose_code_change`, auto-redeploy) is identical to an internal-pattern
+finding either way.
+
+**X cost per loop iteration**: confirmed live (2026-07-09) at the
+$0.005/read tier — a 10-result call billed $0.05. `x_search_recent`
+defaults to and caps at 100 results/call regardless of the endpoint's own
+default of 10 (cost is per-read either way, so always ask for the max),
+putting one call at **$0.50-$1.00** (X bills some read types at $0.01).
+The sweep brief covers up to four topic areas, so a cold Research Query
+Log (first run, or a long gap since the last one) could see all four go
+out fresh — **worst case ~$4.00/iteration**. Once the log is populated,
+steady-state weekly runs typically see one or zero fresh X calls (the rest
+skipped as already-asked-within-7-days), i.e. **~$0.50 or less/iteration**
+in practice. No cross-run dollar budget tracker exists in this version —
+the Query Log's own line count (per `x_search_recent` entry) is the
+running proxy for spend; see
+[docs/ai-setup-checklist.md](../docs/ai-setup-checklist.md) "§5e" for the
+full cost breakdown.
 
 For well-scoped proposals the manager has `coder` draft the new file
 content, then calls `propose_code_change` itself (the manager, not
@@ -340,6 +372,7 @@ Browser                              Open WebUI / any MCP client
                 ├─► job worker thread  (polls /data/jobs every 2s, one job at a time)
                 ├─► manager agent  (qwen3.5:9b-64k — orchestrator + agent scaffolding tools)
                 │     ├─► web_researcher  (qwen3.5:9b-64k — web search + page reading)
+                │     ├─► researcher  (qwen3.5:9b-64k — structured, sourced research briefs)
                 │     ├─► coder  (qwen3.6:35b — sandboxed Python execution)
                 │     ├─► ops  (qwen3.5:9b-64k — wiki/inventory/projects/automation/helpdesk)
                 │     ├─► writer  (qwen3.5:9b-64k — docs/summaries/copy → Outline)

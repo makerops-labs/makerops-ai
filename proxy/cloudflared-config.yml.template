@@ -1,0 +1,24 @@
+# makerops-ai — Cloudflare Tunnel ingress rules for the private AI stack.
+#
+# Drop-in for makerops-core's cloudflared service: copy this file into
+#   makerops-core/remote_access/cloudflared/config/config.yml
+# and fill in <TUNNEL_ID>, <CREDENTIALS_FILE>, and <YOUR_DOMAIN> below.
+# makerops-core gitignores config/ entirely — this file (and the real
+# tunnel credentials it references) never appears in the public repo. See
+# remote_access/cloudflared/README.md for the one-time tunnel setup that
+# produces the tunnel ID and credentials file, and proxy/README.md's
+# install steps for the copy command.
+#
+# Points directly at alexa-bridge's own port rather than through
+# name-proxy — name-proxy adds no value for a single hostname, and
+# skipping it keeps one fewer hop between the public internet and the
+# bridge.
+
+tunnel: <TUNNEL_ID>
+credentials-file: /etc/cloudflared/<CREDENTIALS_FILE>
+
+ingress:
+  - hostname: alexa.<YOUR_DOMAIN>
+    service: http://host.docker.internal:8103
+  # Must stay last — cloudflared requires a catch-all as the final rule.
+  - service: http_status:404

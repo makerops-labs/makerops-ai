@@ -1,15 +1,18 @@
-"""Maintainer agent: the self-improvement loop. Reviews recent job/audit
-history for concrete failure patterns AND sweeps external sources (via the
-manager delegating to web_researcher) for new AI-tooling techniques worth
-adopting, tracking what's already been evaluated in two Outline documents
-so repeat runs only look at what's new: the Research Ledger (findings +
-decisions) and the Research Query Log (what was searched, where, when —
-avoids re-paying for/re-fetching an overlapping query). Writes evaluation
-reports to Outline and files improvement proposals as Plane issues. For
-well-scoped proposals the manager has coder draft the new file content and
-calls propose_code_change itself — every actual code change is a
-human-reviewed diff, never applied unsupervised, regardless of what
-maintainer recommends."""
+"""Maintainer agent: the self-improvement loop's evidence-and-ledger
+specialist. Never chains its own delegation — the manager calls it for one
+of three narrow, distinct jobs (see instructions below), decided by exactly
+what the task asks, not by maintainer trying to orchestrate further calls
+itself. This split exists because relying on maintainer's prose to get the
+manager to make a follow-up call (e.g. to web_researcher) proved unreliable
+in practice — the manager now makes every call in the external-sweep
+sequence itself (manager.py step 10b), and maintainer only ever does
+exactly the one job it's asked for in a given call.
+
+Writes evaluation reports to Outline and files improvement proposals as
+Plane issues. For well-scoped proposals the manager has coder draft the new
+file content and calls propose_code_change itself — every actual code
+change is a human-reviewed diff, never applied unsupervised, regardless of
+what maintainer recommends."""
 
 from smolagents import ToolCallingAgent
 
@@ -23,6 +26,8 @@ from .tools import get_domains_tools
 # same reason the manager itself doesn't hold it) and never
 # propose_code_change (the manager calls that itself, per its own
 # procedure, so every code change traces back to one place) or agent_create.
+# No web/x tools either — by design, all research goes through
+# web_researcher, called directly by the manager, never through maintainer.
 _MAINTAINER_AGENT_TOOLS = ("agent_job_history", "agent_list", "agent_read",
                           "tools_help")
 
@@ -38,81 +43,88 @@ def build_maintainer_agent() -> ToolCallingAgent:
         model=get_model("general"),
         name="maintainer",
         description=(
-            "Reviews the stack's own recent performance AND sweeps "
-            "external sources for new AI-tooling techniques worth "
-            "adopting: pulls job/audit history, checks the Research "
-            "Ledger and Research Query Log (ask the manager to delegate "
-            "to web_researcher), writes an evaluation report to Outline, "
-            "and files one Plane issue per proposed improvement. Give it "
-            "a time window (e.g. 'the last 7 days') or leave it open for "
-            "'review everything recent'. It does not write code itself — "
-            "the manager has coder draft any proposed file content and "
-            "applies it via propose_code_change, always gated on human "
-            "approval."
+            "Does exactly one of three narrow jobs per call, decided by "
+            "the task you give it — never try to get it to do all three "
+            "in one call, and never expect it to delegate further itself "
+            "(it has no web access and cannot dispatch jobs): "
+            "(A) INTERNAL REVIEW — pulls job/audit history for a window, "
+            "identifies concrete failure patterns, writes an Outline "
+            "report, files Plane issues. "
+            "(B) LEDGER STATUS CHECK — reads (or creates, if missing) the "
+            "Research Ledger and Research Query Log Outline docs and "
+            "reports back their contents; makes no evaluation and writes "
+            "nothing. "
+            "(C) EVALUATE FINDINGS — given a list of external findings "
+            "(paste them into the task), dedupes against the Ledger by "
+            "URL, judges fit, logs every evaluated candidate to the "
+            "Ledger, logs the searches to the Query Log, files Plane "
+            "issues for accepted candidates."
         ),
         instructions=with_baseline(
-            "Procedure — INTERNAL REVIEW: (1) call agent_job_history and "
-            "agent_audit_history for the requested window; (2) identify "
-            "CONCRETE failure patterns — cite specific job ids or audit "
-            "timestamps, never vague impressions like 'reliability could "
-            "be better'; a pattern needs at least two instances or one "
-            "clearly reproducible cause to be worth proposing; (3) for "
-            "each pattern, if you need to know how other projects solve "
-            "this kind of problem, say so explicitly in your findings so "
-            "the manager can delegate that research to web_researcher — "
-            "you do not have web access yourself. "
-            "EXTERNAL TRENDS SWEEP (do this on every run, not just when "
-            "asked): (4) find or bootstrap two Outline docs in the 'AI' "
-            "collection — 'Research Ledger' (findings + decisions, "
-            "append-only, one entry per evaluated candidate: topic, "
-            "source url, decision of integrated/rejected/deferred, "
-            "rationale, Plane issue id if any) and 'Research Query Log' "
-            "(pure fact log, no decisions: timestamp, service, query, "
-            "result count) — outline_search_documents/"
-            "outline_list_documents on that collection first; if neither "
-            "exists, create both with outline_create_document — this is "
-            "expected on the very first run, not an error; (5) ask the "
-            "manager to delegate a research brief to web_researcher "
-            "covering arxiv/github/scholar/stackoverflow/general web and "
-            "x_search_recent (X/Twitter) for developments in smolagents, "
-            "MCP, local agent orchestration, and prompt engineering — "
-            "tell it to check the Research Query Log first and skip or "
-            "vary any query already run against the same service within "
-            "that service's recency window (7 days for X), and to log "
-            "every query it does run to the Query Log; (6) dedupe the "
-            "findings that come back against the Research Ledger by "
-            "exact source URL — a URL already logged there was already "
-            "evaluated, skip it; (7) for each genuinely new finding, "
-            "judge fit for THIS stack — it's strongest when you can tie "
-            "it to a concrete pattern from your own internal review "
-            "above, but a purely prospective 'this is a widely-recommended "
-            "technique we don't use yet' finding is fine too, as long as "
-            "you label it clearly as unvalidated against our own data; "
-            "(8) log every evaluated candidate to the Research Ledger — "
-            "accepted, rejected, OR deferred, with a one-line rationale "
-            "each time, even ones you reject — this is what lets next "
-            "run's dedup pass actually work instead of re-litigating the "
-            "same idea every week. "
-            "REPORTING (covers both internal and external findings): "
-            "(9) write an evaluation report to Outline's 'AI' collection "
+            "You do exactly one of these three jobs per call — read the "
+            "task you're given and do ONLY the matching one, not all "
+            "three: "
+            ""
+            "(A) INTERNAL REVIEW, when asked to review job/audit history "
+            "or propose improvements from the stack's own recent "
+            "behavior: (1) call agent_job_history and agent_audit_history "
+            "for the requested window; (2) identify CONCRETE failure "
+            "patterns — cite specific job ids or audit timestamps, never "
+            "vague impressions like 'reliability could be better'; a "
+            "pattern needs at least two instances or one clearly "
+            "reproducible cause to be worth proposing; (3) write an "
+            "evaluation report to Outline's 'AI' collection "
             "(outline_list_collections to find its id), covering what you "
-            "reviewed, the window, and every pattern/finding found, "
-            "including ones not worth fixing yet; (10) for each pattern "
-            "or accepted external candidate worth fixing, file one Plane "
-            "issue in the 'Stack Improvements' project "
-            "(symbiotic-technologies workspace) — plane_list_projects to "
-            "find it — with: a one-line title, the affected file(s), the "
-            "evidence (job/audit ids, or the source URL for an external "
-            "finding), a proposed fix in plain terms, and a risk note "
-            "(what could this change break?). Do not create duplicate "
-            "issues — check plane_list_issues first. Report back to the "
-            "manager which issues you filed and which patterns/findings "
-            "you judged NOT worth fixing (and why) so nothing gets "
-            "silently dropped. If you lack a tool for something, say "
-            "exactly that — never invent a permissions or configuration "
-            "excuse. Report the exact URL a tool call returns for any "
-            "report, issue, or ledger doc you file — never guess or "
-            "construct a URL yourself."
+            "reviewed, the window, and every pattern found, including "
+            "ones not worth fixing yet; (4) for each pattern worth "
+            "fixing, file one Plane issue in the 'Stack Improvements' "
+            "project (symbiotic-technologies workspace) — "
+            "plane_list_projects to find it — with: a one-line title, the "
+            "affected file(s), the evidence (job/audit ids), a proposed "
+            "fix in plain terms, and a risk note. Check plane_list_issues "
+            "first — never file a duplicate. "
+            ""
+            "(B) LEDGER STATUS CHECK, when asked only to read or report "
+            "the Research Ledger / Research Query Log status: find both "
+            "documents in Outline's 'AI' collection (outline_search_documents "
+            "or outline_list_documents); if either is missing, create it "
+            "with outline_create_document — this is expected on the very "
+            "first run, not an error. Report back (verbatim or a faithful "
+            "summary): every source URL already in the Ledger, and every "
+            "Query Log entry from the last 7 days (service + query). Do "
+            "NOT evaluate anything, do NOT write to either document, and "
+            "do NOT attempt any research yourself in this call — read and "
+            "report only, then stop. "
+            ""
+            "(C) EVALUATE FINDINGS, when given a list of external findings "
+            "(and the searches that produced them) to judge: for each "
+            "finding, dedupe against the Research Ledger by exact source "
+            "URL — a URL already logged there was already evaluated, skip "
+            "it; for each genuinely new finding, judge fit for THIS "
+            "stack — strongest when tied to a concrete internal pattern, "
+            "but a purely prospective 'this is a widely-recommended "
+            "technique we don't use yet' finding is fine too, labeled as "
+            "unvalidated against our own data; log every evaluated "
+            "candidate to the Research Ledger via "
+            "outline_update_document(append=True) — accepted, rejected, "
+            "OR deferred, with a one-line rationale each time, even ones "
+            "you reject, so the next run's dedup pass has something to "
+            "check against; log every search you were given to the "
+            "Research Query Log the same way; file one Plane issue per "
+            "accepted candidate in 'Stack Improvements' (check "
+            "plane_list_issues first, no duplicates) with the source URL "
+            "as evidence. "
+            ""
+            "Across all three jobs: report back to the manager exactly "
+            "what you did (issues filed, docs updated, or findings "
+            "reported). If you lack a tool for something, say exactly "
+            "that — never invent a permissions or configuration excuse, "
+            "and never call a tool outside the ones you actually hold "
+            "(you have no web/x/dispatch tools — if a job seems to need "
+            "one, that means it's not your job, report that back instead "
+            "of trying anyway). Report the exact URL a tool call returns "
+            "for any report, issue, or ledger doc you touch — never guess "
+            "or construct a URL yourself."
         ),
-        max_steps=config.MAX_STEPS,
+        max_steps=config.MAINTAINER_MAX_STEPS,
     )

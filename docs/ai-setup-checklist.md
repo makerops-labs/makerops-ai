@@ -105,8 +105,10 @@ domain should appear in `domains`).
 
 - [ ] Create each preset from [openwebui/contexts/](../openwebui/contexts/)
       as a Workspace Model (recipe in that README): Task Dispatcher,
-      Research Assistant, Ops Assistant, Knowledge Curator, Inventory
-      Manager, Coding Assistant, Studio, Code Auditor, General Auditor.
+      Researcher (structured, sourced research briefs — the direct-chat
+      face of the smolagents `researcher` agent), Research Assistant,
+      Ops Assistant, Knowledge Curator, Inventory Manager, Coding
+      Assistant, Studio, Code Auditor, General Auditor.
       Each becomes a named entry in the chat model picker with its system
       prompt and tool scope baked in. (Debate Moderator is set up
       separately in §5h, once the agent job queue and debate system are
@@ -238,6 +240,21 @@ same as any other gated write. See the root [README.md](../README.md)
       (arxiv, github, scholar, stackoverflow, general web). Verify:
       `curl -s http://localhost:8099/healthz` should list `x` as mounted,
       not skipped.
+      **Cost math** (confirmed live 2026-07-09: a 10-result call billed
+      $0.05, i.e. the $0.005/read tier): `x_search_recent` defaults to and
+      caps at 100 results/call, so one call costs **$0.50-$1.00**
+      depending on which of X's two per-read rates it's billed at. A
+      single sweep's brief spans up to four topic areas (smolagents, MCP,
+      agent orchestration, prompt engineering); the Research Query Log's
+      dedup check means most of those are skipped once a topic has been
+      asked about in the last 7 days, but on a cold ledger (first run, or
+      after a long gap) all four could go out fresh — **worst case ~$4.00
+      per loop iteration** (4 calls × $1.00), typical steady-state cost
+      once the log is populated is **one fresh call or fewer per
+      iteration, ~$0.50 or less**. At a weekly cadence that's a few
+      dollars a month at worst; there is no cross-run dollar budget
+      tracker in this version — the Query Log itself is the only running
+      proxy (count its `x_search_recent` lines to estimate spend).
 - [ ] Optional recurring trigger: in n8n, a **Schedule Trigger** (weekly)
       node → call `agent_dispatch` on the agents MCP endpoint with a fixed
       brief ("Review the last 7 days of job and audit history; sweep
@@ -372,12 +389,56 @@ agent job queue's mechanism (§5d), so complete that section first.
 - [ ] Read `debate_manifest(session_id)` after a few rounds and confirm the
       one-line descriptions are actually useful for deciding what to read
       in full — that's the whole point of the manifest for a debate that
-      runs long.
+      runs long. Open a round file too and confirm it's plain markdown
+      prose (abstract line, blank line, argument) — never raw python/JSON;
+      the personas' output contract + the worker's fence-unwrap backstop
+      exist precisely because local models drift into relaying code.
+- [ ] **Let one debate finish** (e.g. `max_rounds=3`): confirm it passes
+      through status `concluding` (one extra closing monitor turn — this
+      is by design, it runs past max_rounds to write the report), lands
+      `concluded`, and `debate_result(session_id)` returns a stand-alone
+      human-readable synthesis (decision, surviving objections, next
+      steps) — you should never need to read the raw rounds to know the
+      outcome.
 - [ ] **Crash-recovery dry-run** (optional but recommended once): restart
       smolagents mid-turn (`docker restart smolagents`), confirm
       `debate_status` shows `stuck` with a clear `stop_reason` rather than
       silently stalling, then `debate_resume` it and confirm the exact
       interrupted round re-runs with no gap in round numbering.
+
+## 5i. Alexa voice control (optional)
+
+Voice-control the stack from real Amazon Echo devices via a dedicated
+liaison agent (`smolagents/agents/alexa_liaison.py`) that owns the whole
+conversation — see [alexa-bridge/README.md](../alexa-bridge/README.md) for
+the architecture and [alexa-voice-setup.md](alexa-voice-setup.md) for the
+full manual walkthrough (Cloudflare Tunnel + Alexa Developer Console). The
+code side (liaison agent, mcp-tools' `liaison` domain, the bridge service)
+is already in place; this is the remaining manual setup checklist:
+
+- [ ] Recreate mcp-tools so it mounts the liaison session store (new
+      compose volume): `cd mcp-tools && docker compose -p mcp-tools up -d`.
+      Check `curl -s http://localhost:8099/healthz | jq .domains` includes
+      `"liaison"`, and restart smolagents (`docker restart smolagents`) so
+      its job worker builds the liaison agent alongside manager/debate_manager.
+- [ ] Follow [alexa-voice-setup.md](alexa-voice-setup.md) for the
+      Cloudflare Tunnel setup, `alexa-bridge/start.sh`, and the Alexa
+      Developer Console skill creation — in that order, since the skill's
+      endpoint URL needs the tunnel's hostname to exist first.
+- [ ] **Caveat, same shape as the name-proxy one above**: the private
+      Cloudflare Tunnel ingress config
+      (`makerops-core/remote_access/cloudflared/config/config.yml`) lives
+      outside git, copied by hand from
+      `proxy/cloudflared-config.yml.template` — rebuilding `makerops-core`
+      from scratch means redoing that copy (see that template's own
+      comments and `remote_access/cloudflared/README.md`).
+- [ ] **Dry-run** (see `alexa-bridge/README.md`'s Verify section for the
+      curl-based version first): from a real Echo device, ask something
+      ambiguous, confirm the liaison asks exactly one clarifying question,
+      answer it, then say "status", then say "goodbye" and confirm the
+      session ends cleanly. Trigger a gated write action by voice and
+      confirm "confirm"/"deny" resolves it via the same `/approvals` gate
+      any other client uses — never an LLM's own judgment call.
 
 ## 6. Write notifications (recommended)
 

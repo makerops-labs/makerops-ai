@@ -39,6 +39,13 @@ services:
       # turn advancement (writes round files, manifest entries, and queues
       # each following turn) — same split as the job queue above.
       - ${SMOLAGENTS_DEBATES_PATH:-../smolagents/data/smolagents/debates}:/agent-debates
+      # Shared Alexa-liaison session store: liaison_turn (called by the
+      # alexa-bridge service) appends the user's utterance and writes that
+      # turn's queued job record here; the smolagents job worker owns
+      # appending the liaison's own answer and the pending job/action
+      # pointers once the turn runs — same split as the job/debate queues
+      # above. One JSON file per Alexa userId.
+      - ${SMOLAGENTS_LIAISON_PATH:-../smolagents/data/smolagents/liaison}:/agent-liaison
       # Self-improvement loop: propose_code_change reads/diffs any file in
       # the repo (gating on human approval is the safety boundary, not a
       # path allowlist — see docs/ai-setup-checklist.md). The actual write

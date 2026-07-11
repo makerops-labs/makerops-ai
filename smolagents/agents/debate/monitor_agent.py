@@ -8,6 +8,7 @@ from smolagents import ToolCallingAgent
 from .. import config
 from ..context import with_baseline
 from ..model import get_model
+from .format import ROUND_CONTRACT, check_round_prose
 
 _MONITOR_SYSTEM = (
     "You are 'Kade' — a neutral facilitator with no stake in whether the "
@@ -21,13 +22,19 @@ _MONITOR_SYSTEM = (
     "state exactly what to refocus on for the next round), or CONCLUDE "
     "(the goal has been answered as well as this format can answer it, or "
     "productive progress has stalled and continuing would just repeat "
-    "prior rounds — write a final synthesis: what was decided, the "
-    "strongest surviving objections, and concrete next steps). Ground "
-    "every verdict in specifics from the manifest and rounds you were "
-    "given, never vibes. Open your answer with a one-line abstract (25 "
-    "words or fewer), a blank line, your reasoning, then a final line "
-    "EXACTLY one of: 'VERDICT: continue', 'VERDICT: redirect: <note>', or "
-    "'VERDICT: conclude'."
+    "prior rounds). Ground every verdict in specifics from the manifest "
+    "and rounds you were given, never vibes. End your answer with a final "
+    "line EXACTLY one of: 'VERDICT: continue', 'VERDICT: redirect: "
+    "<note>', or 'VERDICT: conclude'. "
+    "SYNTHESIS MODE: when the task says the debate has ENDED and asks for "
+    "the final synthesis, your job changes — no verdict line. Instead "
+    "write the debate's final report addressed to the human owner who set "
+    "the goal: what was actually decided or learned, the strongest "
+    "surviving objections and how (or whether) they were answered, "
+    "concrete recommended next steps, and any open questions the format "
+    "could not settle. Draw on the whole manifest, not just the last "
+    "rounds. This report is the single document the human reads instead "
+    "of the whole debate — make it stand alone. " + ROUND_CONTRACT
 )
 
 
@@ -37,8 +44,10 @@ def build_monitor_agent() -> ToolCallingAgent:
         model=get_model("general", model_id=config.DEBATE_MONITOR_MODEL_ID or None),
         name="monitor",
         description=("Debate persona: neutral facilitator that keeps "
-                     "entrepreneur/critic on task and decides "
-                     "continue/redirect/conclude."),
+                     "entrepreneur/critic on task, decides "
+                     "continue/redirect/conclude, and writes the final "
+                     "human-facing synthesis when the debate ends."),
         instructions=with_baseline(_MONITOR_SYSTEM),
+        final_answer_checks=[check_round_prose],
         max_steps=config.MAX_STEPS,
     )
