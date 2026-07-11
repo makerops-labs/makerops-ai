@@ -105,7 +105,11 @@ policy.register_executor("inventree", "inventree_adjust_stock", _do_adjust_stock
 def inventree_create_part(name: str, description: str,
                           category_id: int | None = None) -> str:
     """WRITE ACTION — creates a new part in the inventory system. Only call
-    when the user asked for it. The user is notified with a summary."""
+    when the user asked for it. The user is notified with a summary.
+    Preconditions: the user asked for the part; category_id (if given) exists.
+    Effects: a new part record in live business inventory; user notified.
+    Failure modes: 'ERROR: ...' when the InvenTree API rejects the call
+    (e.g. unknown category, duplicate constraints)."""
     return policy.apply_policy(
         domain="inventree", tool="inventree_create_part", action_kind="create",
         summary=f"Create inventory part '{name}'",
@@ -119,7 +123,13 @@ def inventree_adjust_stock(stock_item_id: int, quantity: float, action: str,
                            notes: str = "") -> str:
     """WRITE ACTION — adjusts live stock levels ('add', 'remove', or 'count').
     This modifies business inventory data, so it is held for the user's
-    approval before executing. Always include notes explaining why."""
+    approval before executing. Always include notes explaining why.
+    Preconditions: stock_item_id exists; notes state the reason for the
+    adjustment.
+    Effects: after approval, live stock quantity changes (business data).
+    Failure modes: 'ERROR: ...' on invalid action; otherwise PENDING
+    APPROVAL #id (report, never retry); API errors surface in the approval
+    outcome."""
     if action not in ("add", "remove", "count"):
         return "ERROR: action must be one of add, remove, count."
     return policy.apply_policy(

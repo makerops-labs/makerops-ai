@@ -88,7 +88,13 @@ def speech_generate_audio(text: str, voice: str = "", speed: float = 1.0,
     voice: a voice id from speech_list_voices (default from config).
     speed: 0.5–2.0. response_format: mp3, wav, opus, or flac.
     Synthesis is CPU-only and can take a minute for long scripts.
-    The user is notified with a summary."""
+    The user is notified with a summary.
+    Preconditions: non-empty text within the character limit; voice (if
+    given) from speech_list_voices.
+    Effects: a new audio file + downloadable URL (CPU-only, may take a
+    minute); user notified.
+    Failure modes: 'ERROR: ...' on empty/over-limit text or invalid
+    speed/format; unreachable TTS service surfaces as an error — report it."""
     if not text.strip():
         return "ERROR: text is empty."
     if len(text) > _MAX_TEXT_CHARS:

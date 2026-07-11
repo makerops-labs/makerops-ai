@@ -39,7 +39,8 @@ print(f"[mcp-tools] mounted domains: {', '.join(domains)}")
 # tools_help(path) tool registered on every domain endpoint so any agent can
 # browse it with plain tool-calling.
 
-tree = DocsTree(domains, skipped_domains(), config.MCPTOOLS_PUBLIC_URL)
+tree = DocsTree(domains, skipped_domains(), config.MCPTOOLS_PUBLIC_URL,
+                guidance_dir=config.GUIDANCE_DIR)
 
 
 async def tools_help(path: str = "") -> str:
@@ -252,7 +253,8 @@ async def context_node(request: Request):
     if text is None:
         return PlainTextResponse(
             f"Unknown context path '/{path}'. Valid: /context, /context/<domain>, "
-            f"/context/<domain>/<tool>. Mounted domains: {', '.join(sorted(domains))}.",
+            f"/context/<domain>/<tool>, /context/guidance[/<doc>]. "
+            f"Mounted domains: {', '.join(sorted(domains))}.",
             status_code=404)
     return PlainTextResponse(text, media_type="text/markdown; charset=utf-8")
 

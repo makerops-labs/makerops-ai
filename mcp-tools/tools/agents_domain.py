@@ -137,7 +137,12 @@ def agent_create(name: str, description: str, tool_domains: list[str],
     domains it gets (web, outline, inventree, plane, n8n, comfyui, freescout,
     drawio, triggerdev, speech, approvals, project). model_role: 'general' or
     'coding'. The file is created in the repo working tree for the user to
-    review; the user is notified with a summary."""
+    review; the user is notified with a summary.
+    Preconditions: name is snake_case, non-reserved; tool_domains all valid.
+    Effects: new file smolagents/agents/custom/<name>.py (live after the
+    smolagents container restarts); user notified.
+    Failure modes: returns 'ERROR: ...' on bad name/domains/role or when the
+    agents directory is not mounted; nothing is written on error."""
     if not _NAME_RE.match(name):
         return "ERROR: name must match ^[a-z][a-z0-9_]{2,30}$ (snake_case)."
     if name in ("manager", "web_researcher", "researcher", "coder", "ops",
@@ -203,7 +208,19 @@ def agent_dispatch(objective: str, deliverables: list[str],
     needs_clarification, answer its questions and dispatch a NEW job with
     parent_job_id set to the old id. project: name of a registered project
     (see the project domain) if this job implements an already-approved
-    solution there. The user is notified with a summary."""
+    solution there. context carries SOURCE MATERIAL and domain constraints
+    only — never operating-procedure overrides for the team (output-format
+    protocols, 'do not write code', file-workflow rules): the team's
+    internal procedure already handles state files and output shape, and
+    contradicting it degrades every step of the job. The user is notified
+    with a summary.
+    Preconditions: concrete objective and >=1 explicit deliverable; all
+    source material in context/resources; job queue mounted.
+    Effects: queues ONE unattended background job (minutes of model time,
+    jobs run one at a time); report lands in the inbox + notification.
+    Failure modes: 'ERROR: ...' on empty/invalid fields or unmounted queue
+    (nothing queued); the job itself may later end failed or
+    needs_clarification — check agent_job_status, never re-dispatch blindly."""
     if not objective.strip():
         return "ERROR: objective is empty — refine the task with the user first."
     # A caller passing a single string instead of a list is a common mistake
@@ -405,7 +422,14 @@ def propose_code_change(file_path: str, new_content: str, rationale: str) -> str
     written and, if it's under smolagents/ or mcp-tools/, the affected
     container restarts automatically; if it fails its health check the
     change is reverted and restarted again automatically. .env files and
-    anything under .git/ or a data/ directory cannot be targeted."""
+    anything under .git/ or a data/ directory cannot be targeted.
+    Preconditions: path inside the repo and not excluded; existing file is
+    UTF-8 text; for .py files new_content must parse (checked with ast).
+    Effects: queues a human-gated diff at /approvals; on approval the file
+    is written and the owning container restarts (auto-revert if unhealthy).
+    Failure modes: 'ERROR: ...' pre-queue on path/syntax/binary violations;
+    post-approval health failure notifies with the container log tail and
+    the file reverted — read that tail before proposing a fix."""
     resolved = _resolve_repo_path(file_path)
     if isinstance(resolved, str):
         return resolved

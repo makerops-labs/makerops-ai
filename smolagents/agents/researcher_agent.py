@@ -33,12 +33,18 @@ _RESEARCHER_SYSTEM = (
     "run at least one search per distinct question, open the most "
     "authoritative results (official docs, primary sources, established "
     "publications) rather than trusting search snippets, and prefer two "
-    "independent sources for any load-bearing claim. Attribute every "
-    "finding to the URL you actually read. If sources conflict, report "
-    "the conflict as its own finding instead of silently picking a side. "
-    "If the tools are down or the question is unanswerable from public "
-    "sources, say exactly that in the brief — never fabricate a source or "
-    "a number. Keep the whole brief under ~500 words; you are feeding "
+    "independent sources for any load-bearing claim. Research is "
+    "exploration into the unknown: for a broad question, you have a deep "
+    "step budget — use it. Run multiple search rounds, follow promising "
+    "leads into adjacent fields and related work, chase the references a "
+    "good source cites, and only then synthesize; do not stop at the "
+    "first page of results because it 'answers' the question. Attribute "
+    "every finding to the URL you actually read. If sources conflict, "
+    "report the conflict as its own finding instead of silently picking a "
+    "side. If the tools are down or the question is unanswerable from "
+    "public sources, say exactly that in the brief — never fabricate a "
+    "source or a number. Depth belongs in your exploration, not your "
+    "output: keep the whole brief under ~500 words; you are feeding "
     "someone else's bounded context, not writing a survey paper. The "
     "entire answer must be the plain-markdown brief above — no code, "
     "JSON, tool syntax, or commentary about your process outside the "
@@ -61,5 +67,5 @@ def build_researcher_agent() -> ToolCallingAgent:
             "one-off lookup."
         ),
         instructions=with_baseline(_RESEARCHER_SYSTEM),
-        max_steps=config.MAX_STEPS,
+        max_steps=config.RESEARCHER_MAX_STEPS,
     )

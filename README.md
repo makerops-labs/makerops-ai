@@ -94,6 +94,12 @@ tools without carrying the whole catalog in context:
 | Domain manifest | `GET :8099/context` | `tools_help('')` |
 | One domain's tools | `GET :8099/context/<domain>` | `tools_help('<domain>')` |
 | Full usage for one tool | `GET :8099/context/<domain>/<tool>` | `tools_help('<domain>/<tool>')` |
+| Best-practice guidance | `GET :8099/context/guidance[/<doc>]` | `tools_help('guidance[/<doc>]')` |
+
+The `guidance` branch serves [docs/guidance/](docs/guidance/) — distilled
+operating best practices (planning discipline, external verification,
+tooling for small models) that agents pull on demand; also mirrored to the
+Outline "Guidance" collection for RAG.
 
 Every agent gets the root manifest as baseline context automatically:
 smolagents injects it into all agents' instructions (`agents/context.py`),

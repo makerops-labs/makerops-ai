@@ -69,7 +69,13 @@ def liaison_turn(user_id: str, utterance: str) -> str:
     Returns the job id; poll agent_job_status(job_id) for the reply (status
     'completed' or 'needs_clarification' means report.speech is ready to
     read aloud; 'deferred' means a longer background task was kicked off
-    separately, track that job's own id from report.job_id)."""
+    separately, track that job's own id from report.job_id).
+    Preconditions: non-empty user_id and utterance; job queue and session
+    store mounted.
+    Effects: appends one turn to that user's session and queues one liaison
+    job; returns the job id immediately.
+    Failure modes: 'ERROR: ...' on empty input or unmounted stores; the
+    queued job may itself end failed — poll agent_job_status."""
     if not user_id.strip():
         return "ERROR: user_id is empty."
     if not utterance.strip():
@@ -131,7 +137,11 @@ policy.register_executor("liaison", "liaison_reset_session",
 def liaison_reset_session(user_id: str) -> str:
     """WRITE ACTION — clears one Alexa user's conversation history and
     pending pointers (the 'start over' voice command). Executes immediately
-    (notify tier)."""
+    (notify tier).
+    Preconditions: only on the user's explicit 'start over' intent.
+    Effects: irreversibly erases that user's conversation history and
+    pending pointers; any in-flight turn's context is lost.
+    Failure modes: 'ERROR: ...' when the session store is not mounted."""
     if not user_id.strip():
         return "ERROR: user_id is empty."
     if not liaison_store.available():
@@ -161,7 +171,12 @@ def liaison_clear_pending_action(user_id: str) -> str:
     pending approval directly via /approvals/{id}/{verb} (the confirm/deny
     voice commands). This tool never approves or rejects anything itself —
     it only stops the liaison from continuing to mention an action that was
-    already resolved elsewhere. Executes immediately (notify tier)."""
+    already resolved elsewhere. Executes immediately (notify tier).
+    Preconditions: the pending action was ALREADY resolved via /approvals;
+    a session exists for user_id.
+    Effects: clears the session's pending_action_id pointer, nothing else.
+    Failure modes: 'ERROR: ...' when no session exists or the store is not
+    mounted."""
     if not user_id.strip():
         return "ERROR: user_id is empty."
     if not liaison_store.available():

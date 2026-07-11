@@ -41,5 +41,5 @@ def build_critic_agent() -> ToolCallingAgent:
                      "devil's advocate against the entrepreneur's idea."),
         instructions=with_baseline(_CRITIC_SYSTEM),
         final_answer_checks=[check_round_prose],
-        max_steps=config.MAX_STEPS,
+        max_steps=config.DEBATE_PERSONA_MAX_STEPS,
     )

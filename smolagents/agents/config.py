@@ -92,6 +92,15 @@ DEBATE_MANAGER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEBATE_MANAGER_MAX_STE
 # swap).
 RESEARCHER_MODEL_ID = os.environ.get("SMOLAGENTS_RESEARCHER_MODEL_ID", "")
 
+# Step budgets are role-shaped, not one-size: research is exploration into
+# the unknown and gets a deep internal budget (its whole run still counts
+# as ONE step of whoever delegated to it); debate personas stay tightly
+# bounded — a persona turn is one argument, not an expedition, and the
+# debate-level bound is max_rounds + the monitor's verdict. Everyone else
+# keeps MAX_STEPS.
+RESEARCHER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_RESEARCHER_MAX_STEPS", "40"))
+DEBATE_PERSONA_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEBATE_PERSONA_MAX_STEPS", "12"))
+
 # Hard cap on a single round file's size (chars) — a backstop, not the
 # expected case; persona prompts target ~400-700 words on their own.
 DEBATE_ROUND_MAX_CHARS = int(os.environ.get("SMOLAGENTS_DEBATE_ROUND_MAX_CHARS", "8000"))

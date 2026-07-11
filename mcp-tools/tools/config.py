@@ -15,6 +15,12 @@ def _env(name: str, default: str = "") -> str:
 
 DATA_DIR = Path(_env("MCPTOOLS_DATA_DIR", "/data"))
 
+# Best-practice guidance library served as the docs tree's `guidance`
+# branch (tools/docs_tree.py), read via the existing whole-repo mount that
+# propose_code_change already uses. Missing/empty directory just hides the
+# branch.
+GUIDANCE_DIR = Path(_env("GUIDANCE_DIR", "/repo/docs/guidance"))
+
 # ── Web / search ───────────────────────────────────────────────────────────────
 SEARXNG_URL = _env("SEARXNG_URL", "http://host.docker.internal:8098")
 FETCH_MAX_DOWNLOAD_BYTES = int(_env("FETCH_MAX_DOWNLOAD_BYTES", str(20 * 1024 * 1024)))

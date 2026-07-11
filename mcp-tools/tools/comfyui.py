@@ -112,7 +112,12 @@ def comfyui_generate_image(prompt: str, negative_prompt: str = "",
                            seed: int | None = None) -> str:
     """WRITE ACTION — generates an image with the local ComfyUI instance and
     returns a viewable URL. Takes up to a few minutes on first model load.
-    The user is notified with a summary."""
+    The user is notified with a summary.
+    Preconditions: the ComfyUI service (makerops-core) is running.
+    Effects: GPU generation (minutes on first model load), a new image file
+    + viewable URL; user notified.
+    Failure modes: 'ERROR: ...' when ComfyUI is unreachable or the
+    generation fails — report, don't blind-retry."""
     return policy.apply_policy(
         domain="comfyui", tool="comfyui_generate_image", action_kind="create",
         summary=f"Generate image: {prompt[:100]}",

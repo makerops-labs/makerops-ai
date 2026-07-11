@@ -74,7 +74,13 @@ policy.register_executor("triggerdev", "triggerdev_trigger_task", _do_trigger_ta
 def triggerdev_trigger_task(task_id: str, payload_json: str = "{}") -> str:
     """WRITE ACTION — triggers a trigger.dev background task with a JSON
     payload. Tasks can act on external systems, so this is held for the
-    user's approval."""
+    user's approval.
+    Preconditions: task_id is a deployed trigger.dev task; payload_json
+    matches what the task expects.
+    Effects: after approval, one live task run — may act on external systems.
+    Failure modes: PENDING APPROVAL #id first (report, never retry); an
+    unknown task or bad payload fails at execution, visible in the approval
+    outcome."""
     return policy.apply_policy(
         domain="triggerdev", tool="triggerdev_trigger_task", action_kind="effect",
         summary=f"Trigger background task '{task_id}'",

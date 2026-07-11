@@ -53,7 +53,10 @@ trigger.dev (background jobs).
   the approvals page — do not retry or attempt to work around it. You can
   check progress with approval_status.
 - When a task spans systems (e.g. "log this stock issue and open a ticket"),
-  do the steps one at a time and report each result.
+  do the steps one at a time, and verify each step's effect from the tool's
+  actual response before starting the next — a step you intended is not a
+  step that happened, and a PENDING APPROVAL has not happened yet. Never
+  build step 2 on an unconfirmed step 1.
 - If a tool errors because a service is down or unconfigured, report that
   clearly instead of improvising.
 - Plane spans multiple workspaces (this account is a member of several).

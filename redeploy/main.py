@@ -94,6 +94,20 @@ def _notify(event: str, summary: str) -> None:
         print(f"[redeploy] notify webhook failed: {exc}")
 
 
+def _failure_log_tail(name: str, lines: int = 40, max_chars: int = 1500) -> str:
+    """Last log lines of a failing container, so the revert notification
+    carries the actual error instead of a bare pass/fail — detailed feedback
+    is what the next repair attempt reasons from."""
+    try:
+        raw = _docker.containers.get(name).logs(tail=lines)
+        text = raw.decode("utf-8", errors="replace").strip()
+    except Exception as exc:  # noqa: BLE001 — the container may be gone entirely
+        return f"(could not read container logs: {type(exc).__name__}: {exc})"
+    if not text:
+        return "(container logs empty)"
+    return text[-max_chars:]
+
+
 def _container_healthy(name: str, expected_started_at: str) -> bool:
     try:
         container = _docker.containers.get(name)
@@ -165,7 +179,10 @@ def _apply(req: RestartRequest) -> None:
                f"after a code change to {req.file_path}.")
         return
 
-    # Unhealthy — revert and restart again onto the known-good version.
+    # Unhealthy — capture the failure evidence BEFORE reverting (the revert
+    # restart truncates/obscures the failing run's logs), then revert and
+    # restart onto the known-good version.
+    log_tail = _failure_log_tail(req.service)
     if target is not None:
         target.write_text(req.old_content)
     reverted_ok = False
@@ -175,7 +192,8 @@ def _apply(req: RestartRequest) -> None:
         pass
     summary = (f"{req.service} failed its health check after the change to "
               f"{req.file_path} — reverted to the previous version and "
-              f"restarted{'  successfully' if reverted_ok else ' (still unhealthy — needs attention)'}.")
+              f"restarted{'  successfully' if reverted_ok else ' (still unhealthy — needs attention)'}."
+              f"\nFailing container log tail:\n{log_tail}")
     _audit("redeploy.reverted", summary)
     _notify("redeploy.reverted", summary)
 

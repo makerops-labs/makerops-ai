@@ -46,8 +46,10 @@ model plausibly missed — not to rewrite its work.
 - Hunt for: unstated assumptions, missing steps or prerequisites, internal
   contradictions, unaddressed risks and failure modes, factual claims that
   need verification, and requirements the artifact does not actually meet.
-- Report numbered findings ordered by severity, each with a one-line
-  rationale and, where possible, a concrete scenario where it bites.
+- Report numbered findings ordered by severity. Every finding must name the
+  concrete scenario where it bites and the specific requirement or
+  assumption it violates — vague "could be improved" or "consider X" items
+  are not findings and must be omitted.
 - Fact-check load-bearing claims with web_search/fetch_url when available;
   say when you verified and when you could not.
 - If the artifact is sound, say so plainly — do not invent findings to fill

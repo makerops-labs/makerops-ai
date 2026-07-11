@@ -37,6 +37,11 @@ can discover tools without carrying the full catalog in context:
 | Root manifest (domain per line) | `GET /context` | `tools_help('')` |
 | One domain's tools | `GET /context/<domain>` | `tools_help('<domain>')` |
 | Full usage doc for one tool | `GET /context/<domain>/<tool>` | `tools_help('<domain>/<tool>')` |
+| Best-practice guidance library | `GET /context/guidance[/<doc>]` | `tools_help('guidance[/<doc>]')` |
+
+The `guidance` branch serves [docs/guidance/](../docs/guidance/) (read via
+the existing whole-repo mount) — distilled operating best practices agents
+can pull on demand.
 
 `tools_help(path)` is registered on **every** domain endpoint (and the
 composed `/mcp`), so any connected agent can browse the tree with plain tool
@@ -77,6 +82,14 @@ Downloads are capped at 20 MB.
 **Local models degrade with long tool lists.** Prefer connecting a client to
 the per-domain endpoints (`/mcp/web`, `/mcp/outline`, ...) over the full
 `/mcp` when the task doesn't need everything.
+
+**Write-tool docstring convention** (per
+[docs/guidance/small-model-tooling.md](../docs/guidance/small-model-tooling.md)):
+every `WRITE ACTION` docstring ends with a terse `Preconditions:` /
+`Effects:` / `Failure modes:` trailer — models (especially small local ones)
+infer tool semantics from names and guess the rest, so the semantics must be
+in the description. Keep each line short: descriptions ship in tool schemas
+to every attached agent.
 
 ## Write policy (human-in-the-loop)
 

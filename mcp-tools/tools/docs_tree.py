@@ -7,6 +7,12 @@ Three levels, each kept small so agents load only what they need:
     "<domain>"          the domain's tools with one-line descriptions
     "<domain>/<tool>"   full docstring + parameter table for one tool
 
+A parallel ``guidance`` branch serves the best-practice library
+(makerops-ai/docs/guidance, bind-mounted read-only): ``guidance`` lists the
+docs, ``guidance/<slug>`` returns one in full. It is rendered from disk on
+every request (the mount updates live with the repo checkout), unlike the
+introspected domain nodes below.
+
 Every node ends with navigation (up/down) so an agent can drill in for
 detail or back out when a branch does not fit the task. Served both over
 plain HTTP (GET /context[...]) and as the ``tools_help(path)`` MCP tool
@@ -15,6 +21,8 @@ present on every domain endpoint (see server.py).
 Rendered lazily from live FastMCP introspection and cached per process —
 mounts only change when the container is recreated.
 """
+
+from pathlib import Path
 
 WRITE_PREFIX = "WRITE ACTION"
 WRITE_MARK = "✎"  # ✎
@@ -32,11 +40,16 @@ def _first_sentence(text: str | None) -> str:
     return line[:180]
 
 
+GUIDANCE_NODE = "guidance"
+
+
 class DocsTree:
-    def __init__(self, domains: dict, skipped: dict[str, str], base_url: str):
+    def __init__(self, domains: dict, skipped: dict[str, str], base_url: str,
+                 guidance_dir: Path | None = None):
         self._domains = domains
         self._skipped = skipped
         self._base = base_url.rstrip("/")
+        self._guidance_dir = guidance_dir
         self._inventory: dict[str, dict] | None = None
         self._cache: dict[str, str | None] = {}
 
@@ -54,8 +67,15 @@ class DocsTree:
     async def render(self, path: str) -> str | None:
         """Markdown for the node at ``path``; None for unknown paths."""
         path = (path or "").strip().strip("/")
+        parts = path.split("/") if path else []
+        if parts and parts[0] == GUIDANCE_NODE:
+            # Never cached: the guidance mount updates live with the repo.
+            if len(parts) == 1:
+                return self._render_guidance_index()
+            if len(parts) == 2:
+                return self._render_guidance_doc(parts[1])
+            return None
         if path not in self._cache:
-            parts = path.split("/") if path else []
             if len(parts) == 0:
                 self._cache[path] = await self._render_root()
             elif len(parts) == 1:
@@ -65,6 +85,66 @@ class DocsTree:
             else:
                 self._cache[path] = None
         return self._cache[path]
+
+    # ── Guidance branch ────────────────────────────────────────────────────────
+
+    def _guidance_docs(self) -> list[Path]:
+        if self._guidance_dir is None or not self._guidance_dir.is_dir():
+            return []
+        # README.md is the human-facing index; the index node below already
+        # plays that role for agents.
+        return sorted(p for p in self._guidance_dir.glob("*.md")
+                      if p.stem.lower() != "readme")
+
+    @staticmethod
+    def _guidance_title_blurb(path: Path) -> tuple[str, str]:
+        """(title, one-line blurb) from a doc's leading heading + first prose line."""
+        title, blurb = path.stem, ""
+        try:
+            for raw in path.read_text().splitlines():
+                line = raw.strip()
+                if not line:
+                    continue
+                if line.startswith("#"):
+                    if title == path.stem:
+                        title = line.lstrip("# ").strip()
+                    continue
+                blurb = _first_sentence(line)
+                break
+        except OSError:
+            pass
+        return title, blurb
+
+    def _render_guidance_index(self) -> str | None:
+        docs = self._guidance_docs()
+        if not docs:
+            return None
+        lines = []
+        for p in docs:
+            title, blurb = self._guidance_title_blurb(p)
+            lines.append(f"- **{title}** — {blurb}  "
+                         f"→ `{HELP_TOOL}('{GUIDANCE_NODE}/{p.stem}')`")
+        return f"""# Best-practice guidance
+
+Distilled operating guidance for agents in this stack (planning discipline,
+verification, tool use). Pull ONE doc when its topic matches your task —
+never preload all of them. Source of truth: makerops-ai/docs/guidance/.
+
+{chr(10).join(lines)}
+
+{self._nav(down_hint=f"`{HELP_TOOL}('{GUIDANCE_NODE}/<doc>')` · GET {self._base}/context/{GUIDANCE_NODE}/<doc>", up="")}"""
+
+    def _render_guidance_doc(self, slug: str) -> str | None:
+        if self._guidance_dir is None or "/" in slug or slug in ("", ".", ".."):
+            return None
+        path = self._guidance_dir / f"{slug}.md"
+        if not path.is_file():
+            return None
+        try:
+            body = path.read_text()
+        except OSError:
+            return None
+        return f"{body.rstrip()}\n\n{self._nav(up=GUIDANCE_NODE)}"
 
     # ── Node renderers ─────────────────────────────────────────────────────────
 
@@ -104,6 +184,7 @@ endpoint also carries `{HELP_TOOL}(path)` for browsing this documentation tree.
 report that to the user and stop; a human approves it at {self._base}/approvals.
 Never retry a pending write.
 {f"{chr(10)}Unmounted domains:{skipped}{chr(10)}" if skipped else ""}
+{f"**Best-practice guidance.** Distilled operating guidance (planning discipline, verification, tool use) is browsable at `{HELP_TOOL}('{GUIDANCE_NODE}')` · GET {self._base}/context/{GUIDANCE_NODE} — pull one doc when its topic matches the task.{chr(10)}" if self._guidance_docs() else ""}
 **Agent workforce.** Long or multi-step tasks (research + writing, media
 creation, business-ops sequences, reviewing and improving the stack
 itself, anything needing tools you do not have or unattended execution)

@@ -13,7 +13,7 @@ makerops-core**, and keep any core-side reference local-only (core's
 | Service | Port | Notes |
 | --- | --- | --- |
 | openwebui | 8080 | Chat UI. Workspace-model presets live in `openwebui/contexts/*.md` (git source of truth; recreate in UI by hand). All presets start with `contexts/_baseline.md`. |
-| smolagents | 8090 | Agent workspace (Gradio). Agents in `smolagents/agents/`; code is bind-mounted — `docker restart smolagents` reloads it, rebuild only on lockfile change. |
+| smolagents | 8090 | Agent workspace (Gradio). Agents in `smolagents/agents/`; code is bind-mounted — `docker restart smolagents` reloads it, rebuild only on lockfile change. **Check the job queue is idle first** (`GET :8099/healthz` → `jobs`): a restart kills any running job mid-step (`failed: worker restarted mid-job`). |
 | searxng | 8098 | Private metasearch; JSON API backs web tools. |
 | mcp-tools | 8099 | FastMCP tool server; per-domain endpoints `/mcp/<domain>/`; human write-approvals at `/approvals`; doc tree at `/context` (see below). |
 | speech | 8091 STT / 8093 TTS | speaches (whisper) + Kokoro, CPU-only on purpose. |
@@ -38,6 +38,15 @@ reviewer pools) — see the "Debate system" bullet below.
 
 ## Architecture facts that cost debugging time
 
+- **Best-practice guidance library**: `docs/guidance/` (git source of
+  truth) holds distilled AI operating practices — planning as state
+  tracking, external verification + detailed feedback, negative examples,
+  small-model tooling (from arXiv:2509.13351 et al.; see its README for the
+  add-a-distillation convention). Read the doc matching what you're
+  changing. Served to agents at `/context/guidance` (`tools_help
+  ('guidance')`), mirrored to Outline collection "Guidance" — re-publish
+  after meaningful edits. Write tools follow its Preconditions/Effects/
+  Failure-modes docstring convention.
 - **Tool docs are a progressive-disclosure tree**: `GET /context[/<domain>
   [/<tool>]]` on mcp-tools, mirrored by the `tools_help(path)` tool on every
   domain endpoint. smolagents injects the root manifest into every agent's
@@ -67,6 +76,17 @@ reviewer pools) — see the "Debate system" bullet below.
   run in segments resuming from `jobs/<id>/workspace/synopsis.md`. Adding
   the volume needed `docker compose -p mcp-tools up -d` (recreate) —
   remember `restart` never applies compose/volume/.env changes.
+  **Step-budget exhaustion is handled by the worker, not the model**:
+  smolagents' forced max-steps final answer bypasses `final_answer_checks`
+  (verified in 1.26 source), so `jobs.py` detects the recorded
+  `AgentMaxStepsError` after each segment and auto-continues from
+  `synopsis.md` — but only when the synopsis was touched during that
+  segment (no-progress guard), else `needs_attention`. Step budgets are
+  role-shaped: researcher deep (`SMOLAGENTS_RESEARCHER_MAX_STEPS`, 40),
+  debate personas bounded (`SMOLAGENTS_DEBATE_PERSONA_MAX_STEPS`, 12),
+  everyone else `SMOLAGENTS_MAX_STEPS` (12). A managed agent's whole run
+  is ONE step of its caller, so deep research doesn't eat the manager's
+  job budget.
 - **Project workspaces are a different thing from the job queue above**:
   `~/workspace/<project-name>` directories are user-created **siblings of
   `~/workspace/makerops/`** (never inside it), registered and read/written

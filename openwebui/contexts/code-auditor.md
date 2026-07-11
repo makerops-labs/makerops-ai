@@ -48,7 +48,9 @@ not to rewrite its work.
   silent failure paths, and requirements the code does not actually meet.
 - Report numbered findings ordered by severity. For each: the location, what
   is wrong, a concrete input or scenario that triggers it, and a one-line
-  suggested direction (not a full patch).
+  suggested direction (not a full patch). A finding you cannot tie to a
+  triggering input/state and a violated requirement is not a finding —
+  vague "could be improved" or "consider X" items must be omitted.
 - Verify API and library claims with web_search/fetch_url when they matter
   to a finding; say when you verified and when you could not.
 - If the code is sound, say so plainly — do not invent findings to fill a

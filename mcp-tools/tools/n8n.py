@@ -109,7 +109,12 @@ policy.register_executor("n8n", "n8n_run_webhook", _do_run_webhook)
 @mcp.tool
 def n8n_set_workflow_active(workflow_id: str, active: bool) -> str:
     """WRITE ACTION — activates or deactivates an automation workflow. This
-    changes live automation behavior, so it is held for the user's approval."""
+    changes live automation behavior, so it is held for the user's approval.
+    Preconditions: workflow_id exists in n8n.
+    Effects: after approval, the workflow's triggers/webhooks turn on or off.
+    Failure modes: returns PENDING APPROVAL #id first (report, never retry);
+    an unknown workflow id fails at execution and shows in the approval
+    outcome."""
     return policy.apply_policy(
         domain="n8n", tool="n8n_set_workflow_active", action_kind="effect",
         summary=f"{'Activate' if active else 'Deactivate'} workflow {workflow_id}",
@@ -121,7 +126,14 @@ def n8n_set_workflow_active(workflow_id: str, active: bool) -> str:
 def n8n_run_webhook(webhook_path: str, payload_json: str = "{}") -> str:
     """WRITE ACTION — triggers an n8n workflow via its production webhook path
     with a JSON payload. Workflows can act on external systems, so this is held
-    for the user's approval."""
+    for the user's approval.
+    Preconditions: the workflow is ACTIVE (production webhooks 404 when
+    inactive) and webhook_path is its production path.
+    Effects: after approval, one live workflow run with the payload — may act
+    on external systems.
+    Failure modes: PENDING APPROVAL #id first (report, never retry); at
+    execution, 'webhook not found' when the workflow is inactive or the path
+    is wrong."""
     return policy.apply_policy(
         domain="n8n", tool="n8n_run_webhook", action_kind="effect",
         summary=f"Trigger n8n webhook '{webhook_path}'",

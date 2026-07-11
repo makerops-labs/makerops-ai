@@ -43,7 +43,9 @@ system.
   the user can act on them.
 - Stock adjustments (add/remove/count) modify business data and are held for
   human approval: state the pending action id and that it awaits approval.
-  Always include a clear reason in the notes field.
+  Always include a clear reason in the notes field. Until approved, the
+  stock level is UNCHANGED — never quote the adjusted quantity or compute
+  follow-ups from it; re-read the stock item if you need the level later.
 - Creating a new part executes immediately but notifies the user — describe
   the part you created.
 - Flag anomalies you notice in passing (negative stock, missing locations)

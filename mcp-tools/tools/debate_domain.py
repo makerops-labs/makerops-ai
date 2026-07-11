@@ -92,7 +92,15 @@ def debate_start(goal: str, deliverables: list[str], mode: str = "narrow",
     goal with the user first — the personas cannot ask questions
     mid-debate. Returns the session id; track with debate_status,
     debate_manifest, or debate_read_round. The user is notified with a
-    summary."""
+    summary.
+    Preconditions: a specific goal and >=1 deliverable refined with the
+    user; debate store and job queue mounted.
+    Effects: creates a session and queues its first turn; runs unattended
+    for up to max_rounds (heavy model time), ending in a synthesis
+    summary.md served by debate_result.
+    Failure modes: 'ERROR: ...' on empty/invalid params or unmounted
+    stores; a crashed or failed turn leaves the session 'stuck' — resume
+    with debate_resume, never by starting a duplicate debate."""
     if not goal.strip():
         return "ERROR: goal is empty — refine the request with the user first."
     deliverables = [d for d in (deliverables or []) if d.strip()]
@@ -260,7 +268,11 @@ def debate_resume(session_id: str) -> str:
     a crash or a turn that ended needs_attention/failed (status 'stuck').
     Only valid on a stuck debate — an active one is already progressing on
     its own. Executes immediately (notify tier); the user is notified with
-    a summary."""
+    a summary.
+    Preconditions: the session's status is exactly 'stuck'.
+    Effects: re-queues the interrupted turn; the debate continues from
+    where it stopped.
+    Failure modes: 'ERROR: ...' when the session is unknown or not stuck."""
     session = debate_store.get_session(session_id)
     if session is None:
         return f"ERROR: no debate named '{session_id}'."
@@ -300,7 +312,12 @@ def debate_cancel(session_id: str) -> str:
     yet picked up by the worker), that job is cancelled outright; if a turn
     is already running, it's allowed to finish and write its round file,
     but no further turn is queued after it. Executes immediately (notify
-    tier); the user is notified with a summary."""
+    tier); the user is notified with a summary.
+    Preconditions: the session exists and is not already concluded or
+    cancelled.
+    Effects: status -> cancelled; a queued next turn is dropped, a running
+    turn finishes but nothing follows; no synthesis summary is produced.
+    Failure modes: 'ERROR: ...' on unknown or already-terminal sessions."""
     session = debate_store.get_session(session_id)
     if session is None:
         return f"ERROR: no debate named '{session_id}'."

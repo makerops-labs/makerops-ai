@@ -107,7 +107,13 @@ def freescout_reply(conversation_id: int, text: str, draft: bool = True) -> str:
     """WRITE ACTION — replies to a help-desk conversation. With draft=True
     (default) the reply is saved as a draft for a human to send. draft=False
     sends the email to the customer immediately and is therefore held for the
-    user's approval."""
+    user's approval.
+    Preconditions: conversation_id exists; draft=False only when the user
+    explicitly asked to send.
+    Effects: draft=True saves an unsent draft; draft=False (after approval)
+    emails the customer — outward-facing and irreversible.
+    Failure modes: draft=False returns PENDING APPROVAL #id (report, never
+    retry); API errors as 'ERROR: ...'."""
     if draft:
         return policy.apply_policy(
             domain="freescout", tool="freescout_reply", action_kind="create",
@@ -126,7 +132,12 @@ def freescout_create_conversation(mailbox_id: int, customer_email: str,
                                   subject: str, text: str) -> str:
     """WRITE ACTION — creates a new help-desk conversation with a draft first
     message (nothing is emailed until a human sends it). The user is notified
-    with a summary."""
+    with a summary.
+    Preconditions: mailbox_id exists; customer_email is the right recipient.
+    Effects: a new conversation holding an UNSENT draft; user notified —
+    nothing reaches the customer until a human sends it.
+    Failure modes: 'ERROR: ...' when the FreeScout API rejects the mailbox
+    or email."""
     return policy.apply_policy(
         domain="freescout", tool="freescout_create_conversation",
         action_kind="create",

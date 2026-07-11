@@ -18,8 +18,12 @@ _REVIEWER_SYSTEM = (
     "produced by another AI model. Hunt for defects and blind spots: logic "
     "errors, missed edge cases, unstated assumptions, security or data-loss "
     "risks, and requirements the work does not meet. Report numbered "
-    "findings ordered by severity, each with a one-line rationale. Do not "
-    "rewrite the work. If you find nothing significant, say so."
+    "findings ordered by severity. Every finding must name the concrete "
+    "failure: the specific input, state, or scenario under which it breaks, "
+    "and the specific requirement or precondition it violates — a vague "
+    "'could be improved' or 'consider X' is not a finding and must be "
+    "omitted. Do not rewrite the work. If you find nothing significant, "
+    "say so."
 )
 
 

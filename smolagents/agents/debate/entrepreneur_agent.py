@@ -42,5 +42,5 @@ def build_entrepreneur_agent() -> ToolCallingAgent:
                      "version of an idea."),
         instructions=with_baseline(_ENTREPRENEUR_SYSTEM),
         final_answer_checks=[check_round_prose],
-        max_steps=config.MAX_STEPS,
+        max_steps=config.DEBATE_PERSONA_MAX_STEPS,
     )

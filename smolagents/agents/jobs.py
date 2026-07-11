@@ -23,6 +23,7 @@ from pathlib import Path
 
 import httpx
 from smolagents.memory import ActionStep, PlanningStep
+from smolagents.utils import AgentMaxStepsError
 
 from . import config
 
@@ -590,6 +591,49 @@ def _parse_debate_report(agent, answer) -> dict:
     return report
 
 
+def _steps_exhausted(agent) -> bool:
+    """True when the last run ended because the step budget ran out —
+    smolagents records an AgentMaxStepsError ActionStep in memory before
+    force-summarizing a final answer (which bypasses final_answer_checks)."""
+    return any(isinstance(getattr(s, "error", None), AgentMaxStepsError)
+               for s in agent.memory.steps)
+
+
+def _exhaustion_report(job: dict, workspace: Path, segment_started: float) -> dict:
+    """Deterministic report for a step-exhausted segment: continue when this
+    segment demonstrably made progress — ANY workspace file (synopsis, notes,
+    drafts) written since the segment began; the resume block hands the next
+    segment the synopsis plus a listing of all workspace files, so file
+    progress without synopsis bookkeeping still resumes meaningfully. A
+    segment that produced NO file at all would just repeat itself, so it is
+    surfaced for a human instead. The caller's continuation block still
+    enforces the MAX_SEGMENTS cap on top of this."""
+    synopsis = workspace / "synopsis.md"
+    made_progress = any(p.stat().st_mtime > segment_started
+                        for p in workspace.rglob("*") if p.is_file())
+    if made_progress:
+        print(f"[jobs] job {job['id']} segment {job['segments']} exhausted "
+              "its step budget — auto-continuing from the workspace")
+        return {"status": "continuation",
+                "summary": (f"Segment {job['segments']} hit the step cap "
+                            f"({config.MANAGER_MAX_STEPS} steps); "
+                            "auto-resuming from the workspace synopsis."),
+                "next_steps": ["Resume from synopsis.md and the workspace "
+                               "files (auto-continued after step-budget "
+                               "exhaustion)."]}
+    return {"status": "needs_attention",
+            "summary": (f"Segment {job['segments']} exhausted its step "
+                        f"budget ({config.MANAGER_MAX_STEPS} steps) without "
+                        "writing anything to its workspace, so a fresh "
+                        "segment would just repeat the same work.\n\n"
+                        + (("Last synopsis:\n" + synopsis.read_text())
+                           if synopsis.is_file() else "(no synopsis was ever written)")),
+            "attention": ["Job stopped: step budget exhausted with no "
+                          "workspace progress this segment — refine the "
+                          "brief (smaller scope or explicit sub-tasks) and "
+                          "re-dispatch with parent_job_id."]}
+
+
 def _run_debate_turn(agent, job: dict, workspace: Path) -> None:
     """A debate turn is 'delegate once, relay verbatim' — no continuation
     segments, and completion hands off to deterministic turn-advancement
@@ -830,10 +874,22 @@ def _run_job(agents: dict, job: dict) -> None:
 
     while True:
         task = _format_task(job, workspace)
+        segment_started = time.time()
         try:
             answer = agent.run(task, reset=True,
                                additional_args={"workspace": str(workspace)})
-            report = _parse_report(agent, answer)
+            # A segment that exhausted its step budget got its final answer
+            # from smolagents' forced max-steps summarization, which
+            # BYPASSES final_answer_checks — that answer is untrusted, and
+            # re-feeding the blown-out memory to the salvage run just fails
+            # again. Convert exhaustion into a continuation segment
+            # deterministically instead (the model never volunteers
+            # continuation before dying; this is the code-level trigger,
+            # same philosophy as debate turn-advancement).
+            if _steps_exhausted(agent):
+                report = _exhaustion_report(job, workspace, segment_started)
+            else:
+                report = _parse_report(agent, answer)
         except Exception as exc:  # noqa: BLE001 — a failed run must land in the record
             job.update(status="failed", finished_at=_now(),
                        error=f"{type(exc).__name__}: {exc}")

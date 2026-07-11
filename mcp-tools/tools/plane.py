@@ -169,7 +169,13 @@ def plane_create_issue(project_id: str, name: str, workspace_slug: str = "",
     """WRITE ACTION — creates a new issue in a Plane project. workspace_slug:
     required unless a default is configured. Only call when the user asked
     for it. Priority: urgent, high, medium, low, or none. The user is
-    notified with a summary."""
+    notified with a summary.
+    Preconditions: the user asked for an issue; project_id exists in the
+    workspace.
+    Effects: a new live issue visible to everyone in the project; user
+    notified.
+    Failure modes: 'ERROR: ...' when no workspace is resolvable or the Plane
+    API rejects the call."""
     slug = _resolve_slug(workspace_slug)
     if not slug:
         return ("ERROR: no workspace specified and no default configured — "
@@ -193,7 +199,12 @@ def plane_update_issue(project_id: str, issue_id: str,
     """WRITE ACTION — modifies an existing issue. workspace_slug: required
     unless a default is configured. changes_summary must itemize every
     intended change. Updates to issues the agent did not create are held
-    for the user's approval."""
+    for the user's approval.
+    Preconditions: the issue exists (it is read back before proposing);
+    changes_summary itemizes every field you are changing.
+    Effects: overwrites the named fields of a live issue.
+    Failure modes: 'ERROR: ...' if the issue can't be fetched; PENDING
+    APPROVAL #id for issues the agent did not create (report, never retry)."""
     slug = _resolve_slug(workspace_slug)
     if not slug:
         return ("ERROR: no workspace specified and no default configured — "
@@ -217,7 +228,11 @@ def plane_add_comment(project_id: str, issue_id: str, text: str,
                       workspace_slug: str = "") -> str:
     """WRITE ACTION — adds a comment to an issue. workspace_slug: required
     unless a default is configured. Only call when the user asked for it.
-    The user is notified with a summary."""
+    The user is notified with a summary.
+    Preconditions: the user asked for it; the issue exists.
+    Effects: a new comment visible to all project members; user notified.
+    Failure modes: 'ERROR: ...' when no workspace is resolvable or the API
+    rejects the issue id."""
     slug = _resolve_slug(workspace_slug)
     if not slug:
         return ("ERROR: no workspace specified and no default configured — "

@@ -125,7 +125,13 @@ def trellis_image_to_3d(image_url: str, seed: int | None = None,
     Generation takes 2-5 minutes (up to ~10 on the first call while the model
     loads) — do not retry while a call is in flight. The trellis service is
     started on demand; if the connection is refused, report that to the user
-    instead of retrying. The user is notified with a summary."""
+    instead of retrying. The user is notified with a summary.
+    Preconditions: image_url is reachable http(s); the trellis service is up
+    (start-on-demand) with VRAM free — it competes with the LLMs.
+    Effects: minutes of GPU generation, then a GLB file + downloadable URL;
+    user notified.
+    Failure modes: connection refused when the service is down (report,
+    don't retry); 'ERROR: ...' on invalid texture_size/simplify/url."""
     if texture_size not in _TEXTURE_SIZES:
         return f"ERROR: texture_size must be one of {_TEXTURE_SIZES}."
     if not 0 <= simplify <= 0.98:

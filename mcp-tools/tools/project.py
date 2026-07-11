@@ -299,7 +299,13 @@ def project_register(project: str, description: str = "") -> str:
     already exist; the user creating it by hand is the authorization to
     write there. Never registers 'makerops' (governed by
     propose_code_change/redeploy instead). Seeds a starter
-    PROJECT_CONTEXT.md at the project root if one isn't already there."""
+    PROJECT_CONTEXT.md at the project root if one isn't already there.
+    Preconditions: ~/workspace/<project> already exists (user-created — that
+    IS the authorization); name is a bare directory name, not 'makerops'.
+    Effects: the directory becomes writable via project_* tools; a starter
+    PROJECT_CONTEXT.md is seeded if absent.
+    Failure modes: 'ERROR: ...' on bad name, missing directory, or the
+    off-limits 'makerops'; this tool never creates the directory."""
     if not _NAME_RE.match(project):
         return "ERROR: project must be a bare directory name (letters, digits, _, - only, no slashes)."
     if project == "makerops":
@@ -345,7 +351,14 @@ def project_write_file(project: str, file_path: str, content: str) -> str:
     to that project's own root (not ~/workspace). content: the FULL file
     content, not a patch — for incremental changes to an existing file,
     prefer project_edit_file. Executes immediately (notify tier) once
-    registered; the user is notified with a summary."""
+    registered; the user is notified with a summary.
+    Preconditions: project registered; file_path stays inside it; content
+    is text (no null bytes).
+    Effects: creates the file or REPLACES it entirely, immediately — an
+    existing file's previous content is gone (no diff, no approval).
+    Failure modes: 'ERROR: ...' on unregistered project, path escape, or
+    binary content; partial content silently destroys the rest of an
+    existing file — use project_edit_file for incremental changes."""
     if "\x00" in content:
         return "ERROR: content contains a null byte — binary content is not supported."
     resolved = _resolve_project_path(project, file_path)
@@ -398,7 +411,12 @@ def project_edit_file(project: str, file_path: str, old_string: str,
     include enough surrounding context to make it unique rather than
     setting replace_all unless you really mean every occurrence. Cheaper
     and safer than project_write_file for incremental changes. Executes
-    immediately (notify tier) once registered."""
+    immediately (notify tier) once registered.
+    Preconditions: the file exists in a registered project; old_string
+    occurs exactly once (or replace_all=True is meant literally).
+    Effects: in-place replacement written immediately.
+    Failure modes: 'ERROR: ...' when old_string is missing or ambiguous —
+    add surrounding context to make it unique rather than guessing."""
     if old_string == new_string:
         return "ERROR: old_string and new_string are identical — nothing to do."
     resolved = _resolve_project_path(project, file_path)
@@ -435,7 +453,10 @@ def project_set_status(project: str, status: str) -> str:
     """WRITE ACTION — update a registered project's status for human
     visibility: one of proposed, assigned, in_progress, review, done.
     Purely informational bookkeeping — it does not itself notify the user
-    (finish background jobs with build_report for that)."""
+    (finish background jobs with build_report for that).
+    Preconditions: project registered; status one of the five listed values.
+    Effects: registry bookkeeping only — no files touched, no notification.
+    Failure modes: 'ERROR: ...' on unknown project or status."""
     if status not in _STATUSES:
         return f"ERROR: status must be one of {_STATUSES}."
     if _get_project(project) is None:
@@ -488,7 +509,15 @@ def project_run_command(project: str, command: str, timeout_s: int = 120) -> str
     long-running daemons/dev servers — the command must run to completion
     and return within timeout_s (max SANDBOX_MAX_TIMEOUT_S, default 600s).
     Executes immediately (notify tier); the user is notified with a
-    summary."""
+    summary.
+    Preconditions: project registered; the sandbox service is running; the
+    command terminates on its own within timeout_s.
+    Effects: runs in an ephemeral resource-capped container with ONLY that
+    project mounted read-write (network on, no Docker socket); returns exit
+    code + stdout/stderr; file changes it makes persist in the project.
+    Failure modes: 'ERROR: ...' when the sandbox is unreachable; 'TIMED
+    OUT' past timeout_s (daemons/dev servers always will); a nonzero exit
+    code is reported, not raised — read it before claiming success."""
     if _get_project(project) is None:
         return f"ERROR: '{project}' is not a registered project — call project_register first."
     if not command.strip():

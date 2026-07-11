@@ -28,6 +28,13 @@ def build_web_agent() -> ToolCallingAgent:
             "and it returns a sourced summary of what it found."
         ),
         instructions=with_baseline(
+            "Return a COMPACT sourced summary — at most ~400 words, one "
+            "line or short paragraph per finding with its source URL. "
+            "Never paste raw page HTML/markup or long verbatim page dumps "
+            "into your answer: your return lands verbatim in your "
+            "caller's bounded context, and bloating it degrades every "
+            "later step of the whole job. Extract what matters, cite the "
+            "URL, move on. "
             "x_search_recent (X/Twitter, last 7 days only) COSTS REAL "
             "MONEY per call (~$0.005-0.01/read, no free tier) — use it "
             "only when specifically asked to check X/Twitter, e.g. during "

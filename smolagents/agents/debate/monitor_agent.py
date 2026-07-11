@@ -49,5 +49,5 @@ def build_monitor_agent() -> ToolCallingAgent:
                      "human-facing synthesis when the debate ends."),
         instructions=with_baseline(_MONITOR_SYSTEM),
         final_answer_checks=[check_round_prose],
-        max_steps=config.MAX_STEPS,
+        max_steps=config.DEBATE_PERSONA_MAX_STEPS,
     )

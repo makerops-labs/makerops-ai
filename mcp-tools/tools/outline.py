@@ -138,7 +138,13 @@ def outline_create_document(collection_id: str, title: str, text: str,
     level of the collection — check outline_list_documents first to find
     the right parent or confirm one doesn't already exist. Only call when
     the user asked for content to be written. The user is notified with a
-    summary."""
+    summary.
+    Preconditions: collection_id exists; you checked no equivalent document
+    already exists (outline_search_documents / outline_list_documents).
+    Effects: a new (published, unless publish=False) wiki document; user
+    notified.
+    Failure modes: 'ERROR: ...' when the collection/parent id is unknown or
+    the API rejects the call."""
     return policy.apply_policy(
         domain="outline", tool="outline_create_document", action_kind="create",
         summary=f"Create wiki document '{title}' in collection {collection_id}",
@@ -152,7 +158,13 @@ def outline_create_document(collection_id: str, title: str, text: str,
 def outline_create_collection(name: str, description: str = "") -> str:
     """WRITE ACTION — creates a new top-level wiki collection. Check
     outline_list_collections first to confirm one doesn't already exist
-    under a similar name. The user is notified with a summary."""
+    under a similar name. The user is notified with a summary.
+    Preconditions: no existing collection under a similar name (check
+    outline_list_collections first).
+    Effects: a new top-level collection visible to all wiki users; user
+    notified.
+    Failure modes: 'ERROR: ...' on API rejection; duplicate-ish names are
+    NOT blocked server-side — the precondition check is on you."""
     return policy.apply_policy(
         domain="outline", tool="outline_create_collection", action_kind="create",
         summary=f"Create wiki collection '{name}'",
@@ -169,7 +181,15 @@ def outline_update_document(document_id: str, changes_summary: list[str],
     itemize every intended change (e.g. ["add Q3 pricing table", "fix SMTP
     host"]). Overwrites of user-authored documents are held for the user's
     approval with a diff; use append=True to add to the end instead of
-    replacing the text."""
+    replacing the text.
+    Preconditions: document_id exists (it is read back first);
+    changes_summary itemizes every intended change.
+    Effects: replaces the document text (or appends with append=True) —
+    text=None keeps the current text and changes only the title.
+    Failure modes: 'ERROR: ...' if the document can't be fetched; PENDING
+    APPROVAL #id for user-authored documents (report, never retry);
+    full-replace without append can silently drop content — prefer
+    append=True when adding."""
     ok, data = _post("/api/documents.info", {"id": document_id})
     if not ok:
         return data
