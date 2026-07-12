@@ -1,13 +1,12 @@
 """Alexa liaison: owns one turn of a voice conversation coming through the
 alexa-bridge service. A separate, dedicated CodeAgent from the general
-manager.py and from debate_manager.py — its own instructions target spoken,
-turn-by-turn dialogue (answer or delegate ONCE, then stop and wait for the
-next thing the user says) rather than either the manager's multi-phase
-VALIDATE/PLAN/BATCH/AUDIT/DELIVER procedure or the debate manager's fixed
-"relay one persona's answer verbatim" shape.
+manager.py — its own instructions target spoken, turn-by-turn dialogue
+(answer or delegate ONCE, then stop and wait for the next thing the user
+says) rather than the manager's multi-phase VALIDATE/PLAN/BATCH/AUDIT/
+DELIVER procedure.
 
-Built once at worker startup (agents/jobs.py) alongside manager and
-debate_manager, and reused across turns with reset=True — prior turns are
+Built once at worker startup (agents/jobs.py) alongside the manager, and
+reused across turns with reset=True — prior turns are
 folded into the task text by jobs.py's _format_liaison_task, not carried in
 the agent's own live memory, since a voice session must survive the bridge
 being a stateless HTTP handler invoked fresh per Alexa turn.
@@ -19,8 +18,7 @@ text looks like one of those, something upstream was misrouted; the
 procedure below tells the model to say so rather than guess.
 
 Delegation is capped at ONE sub-agent (or one agent_dispatch background job)
-per turn, mirroring debate_manager.py's "call the named persona EXACTLY
-ONCE" — smolagents' managed_agents already makes a single delegation
+per turn — smolagents' managed_agents already makes a single delegation
 synchronous/blocking (the sub-agent's full answer lands back in this
 agent's own reasoning before it continues), which is the return-of-control
 primitive the alexa-bridge relies on; capping it at one keeps a turn
@@ -122,9 +120,8 @@ def build_liaison_turn(status: str, speech: str, reprompt: str = "",
 
 def extract_liaison_turn(answer) -> dict | None:
     """First dict in the answer with status+speech keys — mirrors
-    manager.py's extract_report / debate_manager.py's extract_debate_report,
-    kept separate since a liaison turn's report shape differs from both and
-    the three should never be cross-parsed."""
+    manager.py's extract_report, kept separate since a liaison turn's
+    report shape differs and the two should never be cross-parsed."""
     import ast
     import json
     import re

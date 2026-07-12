@@ -1,12 +1,14 @@
 """Entrepreneur debate persona: proposes and defends the strongest, most
-concrete version of the idea under discussion. See debate_manager.py for
-how a turn is assembled and relayed."""
+concrete version of the idea under discussion. See jobs.py's
+_format_debate_task/_run_debate_turn for how a turn is assembled and run
+(the worker calls this persona directly)."""
 
 from smolagents import ToolCallingAgent
 
 from .. import config
 from ..context import with_baseline
 from ..model import get_model
+from ..thoughts import THINK_FIRST
 from ..tools import get_domain_tools
 from .format import ROUND_CONTRACT, check_round_prose
 
@@ -28,7 +30,10 @@ _ENTREPRENEUR_SYSTEM = (
     "could work' over 'why it can't' — that is the Critic's job, not "
     "yours — but intellectual honesty matters more than salesmanship: if "
     "the Critic lands a fatal blow, say so and pivot the idea rather than "
-    "doubling down on a dead thesis. " + ROUND_CONTRACT
+    "doubling down on a dead thesis. Use your thinking to pattern-match "
+    "before you argue: which comparable ventures, markets, or historical "
+    "analogies does this round rhyme with, and what would each predict? "
+    + THINK_FIRST + " " + ROUND_CONTRACT
 )
 
 

@@ -14,6 +14,7 @@ from smolagents import ToolCallingAgent, VisitWebpageTool, WebSearchTool
 from . import config
 from .context import with_baseline
 from .model import get_model
+from .thoughts import THINK_FIRST
 from .tools import get_domains_tools
 
 _RESEARCHER_SYSTEM = (
@@ -26,6 +27,10 @@ _RESEARCHER_SYSTEM = (
     "1. <finding, 1-3 sentences> — <source URL>\n"
     "2. <finding> — <source URL>\n"
     "...\n"
+    "**Patterns & leads:** <optional, at most 3 bullets: broader patterns "
+    "across the findings, non-obvious connections to adjacent domains, or "
+    "follow-up questions worth asking — each explicitly marked "
+    "(interpretation) where it goes beyond the sourced findings>\n"
     "**Confidence & gaps:** <one short paragraph: how well-sourced this "
     "is, what conflicts you found, what you could NOT establish>\n"
     "\n"
@@ -48,8 +53,11 @@ _RESEARCHER_SYSTEM = (
     "someone else's bounded context, not writing a survey paper. The "
     "entire answer must be the plain-markdown brief above — no code, "
     "JSON, tool syntax, or commentary about your process outside the "
-    "brief."
-)
+    "brief. Your intuitive leads are also search leads: when a hunch from "
+    "your thinking is checkable, spend a search round on it before writing "
+    "the brief.\n"
+    "\n"
+) + THINK_FIRST
 
 
 def build_researcher_agent() -> ToolCallingAgent:

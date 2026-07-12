@@ -26,6 +26,14 @@ back the specific violation, never a bare pass/fail.
   stop and escalate instead of burning the budget.
 - **Verify at the transition, not the end.** Checking each step catches errors
   before they compound; a final-answer-only check discards all localization.
+- **The reward is downstream performance.** An adaptation — a rewritten
+  context doc, a saved piece of knowledge, a proposed code change, a new
+  prompt — is validated by whether *later work measurably goes better*, not
+  by how plausible or well-written it looks. SEAL (see
+  [seal-source.md](seal-source.md)) trained self-improvement on exactly one
+  signal: a binary "did the adapted model score higher afterwards"; fluent
+  self-edits that didn't move the metric were discarded. Apply the same
+  test before trusting any self-improvement claim.
 
 ## Evidence
 

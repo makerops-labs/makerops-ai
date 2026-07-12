@@ -1,7 +1,8 @@
 """Monitor debate persona: neutral facilitator with no stake in the idea's
-outcome. Decides continue/redirect/conclude at each checkpoint — see
-debate_manager.py for how its verdict line gets parsed and acted on
-(deterministically, in code — never by an LLM tool call)."""
+outcome. Decides continue/redirect/conclude at each checkpoint — its
+mandated VERDICT line is regex-parsed and acted on by the worker
+(jobs.py's _parse_monitor_verdict/_advance_debate — deterministically, in
+code, never by an LLM tool call)."""
 
 from smolagents import ToolCallingAgent
 
@@ -34,7 +35,12 @@ _MONITOR_SYSTEM = (
     "concrete recommended next steps, and any open questions the format "
     "could not settle. Draw on the whole manifest, not just the last "
     "rounds. This report is the single document the human reads instead "
-    "of the whole debate — make it stand alone. " + ROUND_CONTRACT
+    "of the whole debate — make it stand alone. In synthesis mode only, "
+    "think privately before writing: what pattern did the whole debate "
+    "trace (where did the idea actually move, which objection did the "
+    "work), and what would a reader wish someone had said out loud? Then "
+    "write the report — thoughts stay private, never in the report. "
+    + ROUND_CONTRACT
 )
 
 

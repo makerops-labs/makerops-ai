@@ -11,7 +11,7 @@ OLLAMA_API_BASE = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434/v1")
 OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "ollama")
 
 CODING_MODEL_ID = os.environ.get("SMOLAGENTS_CODING_MODEL_ID", "qwen3.6:35b")
-GENERAL_MODEL_ID = os.environ.get("SMOLAGENTS_GENERAL_MODEL_ID", "qwen3.5:9b-64k")
+GENERAL_MODEL_ID = os.environ.get("SMOLAGENTS_GENERAL_MODEL_ID", "qwen3.6:35b-64k")
 
 
 def _model_list(env_var: str, default: str) -> list[str]:
@@ -25,8 +25,10 @@ def _model_list(env_var: str, default: str) -> list[str]:
 # the review. See the model hierarchy table in README.md.
 CODING_REVIEW_MODEL_IDS = _model_list("SMOLAGENTS_CODING_REVIEW_MODEL_IDS",
                                       "qwen3-coder:30b,gpt-oss:20b")
+# qwen3.5:9b is the former general lead, kept as a reviewer per the
+# lead-switch convention (old lead becomes a reviewer).
 GENERAL_REVIEW_MODEL_IDS = _model_list("SMOLAGENTS_GENERAL_REVIEW_MODEL_IDS",
-                                       "gemma4:12b,gpt-oss:20b")
+                                       "qwen3.5:9b,gemma4:12b,gpt-oss:20b")
 
 DATA_DIR = os.environ.get("SMOLAGENTS_DATA_DIR", "./data")
 MAX_STEPS = int(os.environ.get("SMOLAGENTS_MAX_STEPS", "12"))
@@ -65,8 +67,9 @@ MCP_TOOLS_URL = os.environ.get("SMOLAGENTS_MCP_URL",
                                "http://host.docker.internal:8099")
 
 # Debate system: three fixed personas (entrepreneur, critic, monitor) argue
-# in series, one turn per background job (see agents/debate_manager.py,
-# agents/debate/, and jobs.py's _advance_debate). Entrepreneur/monitor use
+# in series, one turn per background job (see agents/debate/ and jobs.py's
+# _run_debate_turn/_advance_debate — the worker runs each persona directly;
+# no orchestrator LLM sits between them). Entrepreneur/monitor use
 # the most capable model on the stack — both make judgment calls (building
 # the case / deciding when to conclude) where quality matters more than the
 # multi-minute VRAM swap cost, which is fine for an unattended background
@@ -75,22 +78,38 @@ MCP_TOOLS_URL = os.environ.get("SMOLAGENTS_MCP_URL",
 # = fall back to get_model("general")'s role default.
 DEBATE_ENTREPRENEUR_MODEL_ID = os.environ.get("SMOLAGENTS_DEBATE_ENTREPRENEUR_MODEL_ID",
                                               "qwen3.6:35b-64k")
+# -32k derivative (Modelfile num_ctx bump, checklist §5h): the base model
+# serves at Ollama's 4k default, and a debate turn's prompt+argument
+# overflows that — the answer truncates mid-generation before the final
+# answer ever lands, burning the whole step budget. Same reason the qwen
+# leads have -64k derivatives.
 DEBATE_CRITIC_MODEL_ID = os.environ.get("SMOLAGENTS_DEBATE_CRITIC_MODEL_ID",
-                                        "gpt-oss:20b")
+                                        "gpt-oss:20b-32k")
+
+# Personas that run as RAW completions (one plain generation against the
+# persona's system prompt — the audit reviewer pool's proven pattern)
+# instead of as ToolCallingAgents. Observed live: gpt-oss writes excellent
+# critiques but persistently fumbles smolagents' tool-calling protocol
+# (plain-text answers, typed-out pseudo final_answer() calls), burning its
+# whole step budget on submission mechanics. Raw mode trades mid-turn web
+# research for reliability — the right trade for the critic, whose job is
+# argument, not research. Comma-separated persona names.
+DEBATE_RAW_PERSONAS = {p.strip() for p in os.environ.get(
+    "SMOLAGENTS_DEBATE_RAW_PERSONAS", "critic").split(",") if p.strip()}
 DEBATE_MONITOR_MODEL_ID = os.environ.get("SMOLAGENTS_DEBATE_MONITOR_MODEL_ID",
                                          "qwen3.6:35b-64k")
 
-# Debate turn orchestrator: this is "delegate once (research at most once,
-# then the persona), relay verbatim" so it needs far fewer steps than the
-# general manager's MANAGER_MAX_STEPS.
-DEBATE_MANAGER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEBATE_MANAGER_MAX_STEPS", "8"))
-
 # Dedicated researcher agent (agents/researcher_agent.py) — structured,
-# multi-source research briefs, delegatable by the general manager, the
-# debate orchestrator, and usable standalone. Empty = the general lead
+# multi-source research briefs, delegatable by the general manager and
+# usable standalone. Empty = the general lead
 # (same resident model as the managers, so delegating to it costs no VRAM
 # swap).
 RESEARCHER_MODEL_ID = os.environ.get("SMOLAGENTS_RESEARCHER_MODEL_ID", "")
+
+# Investment strategist (agents/investment_agent.py) — sourced, risk-weighted
+# investment assessments; carries the researcher as its own managed
+# sub-agent. Empty = the general lead.
+INVESTMENT_MODEL_ID = os.environ.get("SMOLAGENTS_INVESTMENT_MODEL_ID", "")
 
 # Step budgets are role-shaped, not one-size: research is exploration into
 # the unknown and gets a deep internal budget (its whole run still counts
@@ -99,6 +118,10 @@ RESEARCHER_MODEL_ID = os.environ.get("SMOLAGENTS_RESEARCHER_MODEL_ID", "")
 # debate-level bound is max_rounds + the monitor's verdict. Everyone else
 # keeps MAX_STEPS.
 RESEARCHER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_RESEARCHER_MAX_STEPS", "40"))
+# The strategist sits between the two: deep research is delegated (one step
+# per researcher run), but memo reads/writes and quick lookups need more
+# headroom than the default specialist budget.
+INVESTMENT_MAX_STEPS = int(os.environ.get("SMOLAGENTS_INVESTMENT_MAX_STEPS", "20"))
 DEBATE_PERSONA_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEBATE_PERSONA_MAX_STEPS", "12"))
 
 # Hard cap on a single round file's size (chars) — a backstop, not the
@@ -124,8 +147,8 @@ DEBATE_MONITOR_EVERY_N_DEFAULT = int(os.environ.get("SMOLAGENTS_DEBATE_MONITOR_E
 DEBATES_DIR = os.path.join(DATA_DIR, "debates")
 
 # Alexa liaison: a second, dedicated CodeAgent (agents/alexa_liaison.py) that
-# owns voice conversations turn-by-turn, built once alongside manager/
-# debate_manager and reused with reset=True per turn (prior turns folded
+# owns voice conversations turn-by-turn, built once alongside the manager
+# and reused with reset=True per turn (prior turns folded
 # into the task text — see jobs.py's _format_liaison_task). One JSON session
 # per Alexa userId lives here, shared with mcp-tools (liaison_turn et al.)
 # via bind mount, same pattern as JOBS_DIR/DEBATES_DIR above.
@@ -137,10 +160,9 @@ LIAISON_DIR = os.path.join(DATA_DIR, "liaison")
 # (a voice session is short-lived by nature, unlike a debate's manifest).
 LIAISON_HISTORY_TURNS = int(os.environ.get("SMOLAGENTS_LIAISON_HISTORY_TURNS", "12"))
 
-# A liaison turn is "answer or delegate once, relay concisely" — closer to a
-# debate turn's fixed-shape delegation than the general manager's multi-phase
-# procedure, so it gets a similarly small step budget (matches
-# DEBATE_MANAGER_MAX_STEPS's reasoning) — this also matters for latency:
+# A liaison turn is "answer or delegate once, relay concisely" — a fixed
+# small shape, nothing like the general manager's multi-phase procedure, so
+# it gets a small step budget — this also matters for latency:
 # a smaller budget makes jobs.py's salvage re-run kick in sooner on a model
 # that computes build_liaison_turn(...) but forgets to call final_answer()
 # with it, observed live with the 9b general model.

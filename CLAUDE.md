@@ -28,25 +28,33 @@ across projects.
 Lead-per-domain: best benchmark performer that fits the hardware leads;
 same-expertise lower-benchmark models (plus cross-lineage `gpt-oss:20b`)
 review to catch blind spots. Currently: `qwen3.6:35b` coding,
-`qwen3.5:9b`/`qwen3.5:9b-64k` general+vision, `qwen3-embedding:0.6b` RAG,
-`qwen3.6:35b-64k` default chat/dispatch. Switch leads on benchmark evidence
+`qwen3.6:35b-64k` general/agents AND default chat/dispatch (one resident
+model; the trellis stop-first RAM gotcha now applies to agent jobs too),
+`qwen3.5:9b` vision + light presets (former general lead, now also a
+general reviewer), `qwen3-embedding:0.6b` RAG. Switch leads on benchmark evidence
 (no local A/B gate); old lead becomes a reviewer. On a switch update:
 `SMOLAGENTS_*_MODEL_ID` env vars, `openwebui/contexts/*.md` base models,
 README table. The debate system applies the same reviewer-decorrelation
-reasoning to its critic persona (defaults to `gpt-oss:20b`, same as the
-reviewer pools) — see the "Debate system" bullet below.
+reasoning to its critic persona (defaults to `gpt-oss:20b-32k` — a num_ctx
+derivative of the reviewer pools' model; the base serves at Ollama's 4k
+default, which truncates a debate turn mid-answer) — see the "Debate
+system" bullet below.
 
 ## Architecture facts that cost debugging time
 
 - **Best-practice guidance library**: `docs/guidance/` (git source of
   truth) holds distilled AI operating practices — planning as state
   tracking, external verification + detailed feedback, negative examples,
-  small-model tooling (from arXiv:2509.13351 et al.; see its README for the
-  add-a-distillation convention). Read the doc matching what you're
-  changing. Served to agents at `/context/guidance` (`tools_help
-  ('guidance')`), mirrored to Outline collection "Guidance" — re-publish
-  after meaningful edits. Write tools follow its Preconditions/Effects/
-  Failure-modes docstring convention.
+  small-model tooling, knowledge distillation for persistent memory, local
+  fine-tuning feasibility (from arXiv:2509.13351 + 2506.10943; see its
+  README for the add-a-distillation convention). Read the doc matching
+  what you're changing. Served to agents at `/context/guidance`
+  (`tools_help('guidance')`), mirrored to Outline collection "Guidance" —
+  re-publish after meaningful edits. Write tools follow its Preconditions/
+  Effects/Failure-modes docstring convention. Related:
+  `docs/model-development-playbook.md` (roadmap to self-trained
+  specialized models) and `experiments/seal-lora/` (working single-round
+  self-edit → QLoRA → eval prototype).
 - **Tool docs are a progressive-disclosure tree**: `GET /context[/<domain>
   [/<tool>]]` on mcp-tools, mirrored by the `tools_help(path)` tool on every
   domain endpoint. smolagents injects the root manifest into every agent's
@@ -119,15 +127,31 @@ reviewer pools) — see the "Debate system" bullet below.
   creates `session.json` + the first turn's queued job; the smolagents
   worker, `agents/jobs.py`'s `_advance_debate`, owns every other
   transition, including queuing each following turn). A debate turn IS an
-  ordinary job (tagged `job["debate"]`), run by a *separate* dedicated
-  orchestrator (`agents/debate_manager.py`, its own `CodeAgent` built once
-  alongside the general `manager`) — never the general manager, whose
-  `_PROCEDURE` would actively fight "delegate this turn to exactly one
-  persona and relay verbatim." Turn advancement (deciding whether to queue
-  another turn and who speaks next) is deterministic Python, never an LLM
-  tool call — same reasoning as the rule that a job's own manager never
-  gets dispatch tools (`manager.py`'s `_MANAGER_AGENT_TOOLS` comment): an
-  LLM inside a job must never be the one that triggers the next job. Two
+  ordinary job (tagged `job["debate"]`) and the worker runs the named
+  persona DIRECTLY (`_run_debate_turn`) — there is deliberately NO
+  orchestrator LLM between the worker and a persona. A `debate_manager`
+  CodeAgent relay existed briefly and failed on every real run: its whole
+  job was shuttling the persona's argument into a report tool, and the
+  local model did that by re-typing the text into giant string literals →
+  SyntaxError → step exhaustion → forced junk answer. Task assembly, prose
+  enforcement (persona `final_answer_checks`), the monitor's `VERDICT:`
+  line (regex), and turn advancement are all deterministic Python — same
+  reasoning as the rule that a job's own manager never gets dispatch tools
+  (`manager.py`'s `_MANAGER_AGENT_TOOLS` comment): an LLM inside a job
+  must never be the trigger or the plumbing for the next job. Personas in
+  `SMOLAGENTS_DEBATE_RAW_PERSONAS` (default: critic) run as RAW completions
+  — one plain generation, the audit reviewer pool's pattern — because
+  gpt-oss writes excellent arguments but persistently fumbles smolagents'
+  tool-calling protocol (plain-text answers, typed-out pseudo
+  `final_answer()` calls), burning its step budget on submission mechanics.
+  A raw persona's prompt MUST end with `RAW_MODE_NOTE` (`debate/format.py`,
+  wired in `jobs.py`'s `_worker_loop`): without it, any tool mention in the
+  persona text ("use your web tool… if you have one") makes tool-trained
+  gpt-oss emit a tool call into the void and return an EMPTY visible answer
+  (thoughts only, `done_reason: stop`) → "persona produced no usable round"
+  → debate stuck. Topic-dependent and stochastic — it worked for days
+  before first failing; diagnose via native Ollama `/api/chat` (shows the
+  `thinking`/`content` split), not the OpenAI-compat endpoint. Two
   narrow, explicitly-scoped exceptions mirror the job queue's own
   `queued→cancelled` carve-out: mcp-tools may flip a debate `stuck→active`
   (`debate_resume`) or any non-terminal status `→cancelled`

@@ -106,7 +106,11 @@ domain should appear in `domains`).
 - [ ] Create each preset from [openwebui/contexts/](../openwebui/contexts/)
       as a Workspace Model (recipe in that README): Task Dispatcher,
       Researcher (structured, sourced research briefs — the direct-chat
-      face of the smolagents `researcher` agent), Research Assistant,
+      face of the smolagents `researcher` agent), Investment Strategist
+      (sourced, risk-weighted investment assessments — the direct-chat
+      face of the smolagents `investment_strategist` agent; needs the
+      `project` domain connection and the registered `investments`
+      project), Research Assistant,
       Ops Assistant, Knowledge Curator, Inventory Manager, Coding
       Assistant, Studio, Code Auditor, General Auditor.
       Each becomes a named entry in the chat model picker with its system
@@ -363,12 +367,18 @@ agent job queue's mechanism (§5d), so complete that section first.
       pool/task dispatch: `docker exec ollama ollama pull qwen3.6:35b-64k`
       (create the derivative per §1 if not already done) and
       `docker exec ollama ollama pull gpt-oss:20b` (~13 GB).
+- [ ] Create the critic's context-bumped derivative — the base model
+      serves at Ollama's 4k default, which truncates a debate turn
+      mid-answer (same reason the qwen leads have -64k variants):
+      `docker exec ollama sh -c 'printf "FROM gpt-oss:20b\nPARAMETER
+      num_ctx 32768\n" > /tmp/mf && ollama create gpt-oss:20b-32k -f /tmp/mf'`
 - [ ] Recreate mcp-tools so it mounts the debate session store (new compose
       volume): `cd mcp-tools && docker compose -p mcp-tools up -d`. Check
       `curl -s http://localhost:8099/healthz | jq .domains` includes
       `"debate"`, and restart smolagents (`docker restart smolagents`) so
-      its job worker builds the debate orchestrator alongside the general
-      manager.
+      its job worker builds the three debate personas alongside the general
+      manager (the worker runs each persona directly — there is no
+      orchestrator LLM in a debate turn).
 - [ ] Create the **Debate Moderator** preset from
       [openwebui/contexts/debate-moderator.md](../openwebui/contexts/debate-moderator.md)
       (recipe in [openwebui/contexts/README.md](../openwebui/contexts/README.md))

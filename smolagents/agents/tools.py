@@ -11,13 +11,28 @@ alive for the app's lifetime; anything unavailable yields an empty list
 instead of an error.
 """
 
+from datetime import datetime
+
 import httpx
+from smolagents import tool
 from smolagents.mcp_client import MCPClient
 
 from . import config
 
 _clients: list[MCPClient] = []
 _mounted: set[str] | None | bool = False  # False = not yet fetched
+
+
+@tool
+def current_datetime() -> str:
+    """Current date and time (the container's local timezone). Call this
+    whenever a date matters — report headers, memo filenames, judging how
+    stale a source or a prior document is — instead of guessing; a guessed
+    date is usually wrong.
+
+    Returns e.g. '2026-07-12 13:05 -0500 (Saturday)'.
+    """
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %z (%A)")
 
 
 def _mounted_domains() -> set[str] | None:
@@ -59,13 +74,19 @@ def get_domain_tools(domain: str) -> list:
 def get_domains_tools(*domains: str) -> list:
     """Merged tools from several domains, deduplicated by name — every domain
     endpoint carries the shared tools_help tool, and smolagents requires
-    unique tool names per agent."""
+    unique tool names per agent. The local current_datetime tool rides along
+    so every ToolCallingAgent has clock access (models confabulate dates —
+    observed live). Appended only when MCP tools loaded, so the callers'
+    `get_domains_tools(...) or [fallback]` degradation still fires when the
+    tool server is down."""
     seen: set[str] = set()
     merged = []
     for domain in domains:
-        for tool in get_domain_tools(domain):
-            if tool.name in seen:
+        for mcp_tool in get_domain_tools(domain):
+            if mcp_tool.name in seen:
                 continue
-            seen.add(tool.name)
-            merged.append(tool)
+            seen.add(mcp_tool.name)
+            merged.append(mcp_tool)
+    if merged:
+        merged.append(current_datetime)
     return merged

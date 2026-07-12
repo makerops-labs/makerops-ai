@@ -119,7 +119,7 @@ share training blind spots.
 | --- | --- | --- |
 | Coding | `qwen3.6:35b` (73.4% SWE-bench Verified) | `qwen3-coder:30b`, `gpt-oss:20b` |
 | Default chat / task dispatch | `qwen3.6:35b-64k` (derivative, checklist §1) | — |
-| General / agents / planning | `qwen3.5:9b` (`qwen3.5:9b-64k` for agent use) | `gemma4:12b`, `gpt-oss:20b` |
+| General / agents / planning | `qwen3.6:35b-64k` (same derivative — one resident general model for chat and agents) | `qwen3.5:9b`, `gemma4:12b`, `gpt-oss:20b` |
 | Vision understanding | `qwen3.5:9b` / `qwen3.6:35b` (both natively multimodal) | — |
 | Image generation | FLUX.1 (ComfyUI, in makerops-core) | — |
 | Image-to-3D | `TRELLIS-image-large` 1.2B (trellis service, GPU on-demand) | — |
@@ -139,8 +139,13 @@ reasoning to a different kind of task: its entrepreneur and monitor personas
 default to the default-chat lead `qwen3.6:35b-64k` (both make judgment calls
 where quality matters more than the multi-minute VRAM-swap cost, which is
 fine for an unattended background tool), while its critic persona defaults to
-`gpt-oss:20b` — the same cross-lineage model used in the reviewer pools —
-specifically so it doesn't share the other two personas' blind spots.
+`gpt-oss:20b-32k` — a context-bumped derivative (checklist §5h) of the same
+cross-lineage model used in the reviewer pools — specifically so it doesn't
+share the other two personas' blind spots. (The derivative exists because
+the base model serves at Ollama's 4k default context, which truncates a
+debate turn mid-answer; the reviewer pools still use base `gpt-oss:20b`,
+whose short review prompts fit, but a long artifact review would hit the
+same ceiling — switch the pool to the -32k derivative if that shows up.)
 
 ### Self-improvement loop
 
@@ -217,10 +222,15 @@ the monitor concludes (or the round cap is hit), one closing monitor turn
 writes the final report — what was decided or learned, the strongest
 surviving objections, concrete next steps, open questions — to the
 session's `summary.md`, served by `debate_result`. That report is the
-deliverable; the round files are the working record behind it. When a turn
-needs facts (broad-mode exploration, personas disputing a checkable claim),
-the turn orchestrator can ground the persona with a sourced brief from the
-dedicated **researcher** agent before the persona argues.
+deliverable; the round files are the working record behind it. A turn runs
+its persona **directly** — the worker assembles the persona's task,
+enforces the prose contract, and regex-parses the monitor's verdict, all in
+deterministic code; there is deliberately no orchestrator LLM between the
+worker and a persona (an earlier relay design failed constantly by
+re-typing arguments into giant string literals). Personas carry their own
+web tools for grounding claims; deeper sourced research is available via
+the dedicated **researcher** agent through the general manager or the
+Researcher preset.
 
 Start one from the **Debate Moderator** chat preset (it refines an ambiguous
 ask into a concrete goal/mode/deliverables brief with you first, the same way

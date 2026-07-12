@@ -14,6 +14,7 @@ step 5).
 
 import json
 import os
+import re
 import threading
 import time
 import traceback
@@ -26,6 +27,7 @@ from smolagents.memory import ActionStep, PlanningStep
 from smolagents.utils import AgentMaxStepsError
 
 from . import config
+from .thoughts import strip_thoughts
 
 _POLL_S = 2.0
 _LOG_TAIL_CHARS = 2000
@@ -159,8 +161,9 @@ def _format_task(job: dict, workspace: Path) -> str:
 # manifest.jsonl (one line per completed round, append-only — matches
 # mcp-tools' audit.jsonl pattern so a half-written last line is trivially
 # skippable), and rounds/round-NNN-<persona>.md. Turn advancement below is
-# deterministic Python, never an LLM tool call — see debate_manager.py's
-# module docstring for why.
+# deterministic Python, never an LLM tool call — and so is everything else
+# around a turn: the worker runs the persona directly (_run_debate_turn),
+# with no orchestrator LLM in between.
 
 def _debate_session_path(session_id: str) -> Path:
     return _debates_dir / session_id / "session.json"
@@ -230,19 +233,30 @@ def _render_debate_manifest(session_id: str, limit: int) -> str:
     return "\n".join(lines)
 
 
-def _clean_round_text(text: str) -> str:
-    """Deterministic backstop behind the personas' own output contract
-    (debate/format.py): unwrap an answer the model wrapped whole in a code
-    fence, so the round file and the next turn's prompt get prose, not a
-    ```-block the next persona would imitate. Content inside is preserved
-    verbatim — this only strips the wrapper."""
-    text = (text or "").strip()
+def _unwrap_fences(text: str) -> str:
     while text.startswith("```") and text.endswith("```"):
         first_newline = text.find("\n")
         if first_newline == -1:
             break
         text = text[first_newline + 1:-3].strip()
     return text
+
+
+def _clean_round_text(text: str) -> str:
+    """Deterministic backstop behind the personas' own output contract
+    (debate/format.py): unwrap an answer the model wrapped whole in a code
+    fence, so the round file and the next turn's prompt get prose, not a
+    ```-block the next persona would imitate. Content inside is preserved
+    verbatim — this only strips the wrapper. Also discards a leaked
+    thought scratchpad (thoughts.py's marker protocol) — a scratchpad in a
+    round file would poison the next turn's input. Order matters: unwrap →
+    strip → unwrap covers both a fence-wrapped leak (strip first would
+    orphan the closing fence) and a leak whose response part is itself
+    fenced. Residual case: a thought marker with no response marker is
+    unstrippable by rule — check_round_prose plus the raw path's
+    corrective retry remain the net there, same as before."""
+    text = _unwrap_fences((text or "").strip())
+    return _unwrap_fences(strip_thoughts(text))
 
 
 def _write_debate_round_file(session_id: str, round_num: int, persona: str,
@@ -290,22 +304,22 @@ def _next_debate_persona(next_round: int, monitor_every_n: int) -> str:
 
 
 def _format_debate_task(job: dict, workspace: Path) -> str:
+    """Task text addressed DIRECTLY to the persona taking this turn — there
+    is no orchestrator LLM in a debate turn (see _run_debate_turn)."""
     debate = job["debate"]
     session_id, round_num, persona = (debate["session_id"], debate["round"],
                                       debate["persona"])
     session = _load_debate_session(session_id)
     if session is None:
-        return (f"DEBATE TURN — session {session_id} round {round_num} "
-               f"persona '{persona}'. ERROR: session.json is missing for "
-               "this debate. Skip delegating to a persona; instead call "
-               "build_debate_report(status='needs_attention', "
-               "full_text='session record not found', abstract='session "
-               "record not found') and finish.")
-    session_dir = _debates_dir / session_id
+        # Handled before the persona ever runs — see _run_debate_turn.
+        return ""
     lines = [
-        f"DEBATE TURN — session {session_id}, round {round_num}, persona "
-        f"'{persona}'. Session directory (for any pathlib look-back): "
-        f"{session_dir}",
+        f"DEBATE TURN — round {round_num} of a structured, file-relayed "
+        f"debate. YOU are the '{persona}' persona and this turn is yours: "
+        "write this round's contribution per your persona instructions and "
+        "your OUTPUT CONTRACT. Your entire final answer becomes this "
+        "round's file, read verbatim by the other debaters next turn and "
+        "by the human owner at the end.",
         f"Debate goal ({session['mode']}): {session['goal']}",
     ]
     if session.get("deliverables"):
@@ -318,11 +332,11 @@ def _format_debate_task(job: dict, workspace: Path) -> str:
     if session.get("context"):
         lines.append(f"Background context:\n{session['context']}")
     lines.append(
-        "This is a BROAD, open-ended exploration — the persona may use web "
-        "research, consider multiple angles, and should not rush to "
-        "converge." if session["mode"] == "broad" else
-        "This is a NARROW, well-scoped question — keep the persona's "
-        "answer concrete and directly responsive; do not broaden scope.")
+        "This is a BROAD, open-ended exploration — research where useful, "
+        "consider multiple angles, and do not rush to converge."
+        if session["mode"] == "broad" else
+        "This is a NARROW, well-scoped question — keep your answer "
+        "concrete and directly responsive; do not broaden scope.")
     if session.get("pending_redirect"):
         lines.append(
             f"MONITOR REDIRECT (from round {session['current_round']}): "
@@ -337,22 +351,74 @@ def _format_debate_task(job: dict, workspace: Path) -> str:
         lines.append(
             f"\nSYNTHESIS MODE — the debate has ENDED "
             f"({session.get('stop_reason') or 'round cap reached'}). "
-            f"YOUR JOB THIS TURN: delegate this ENTIRE turn to the "
-            f"'monitor' sub-agent, telling it explicitly this is SYNTHESIS "
-            f"MODE: it must write the final stand-alone report for the "
-            f"human owner (what was decided or learned, the strongest "
-            f"surviving objections, concrete next steps, open questions), "
-            f"drawing on the whole manifest — no verdict line. Then relay "
-            f"its answer verbatim via build_debate_report "
-            f"(verdict='conclude') and finish.")
+            "Write the final stand-alone report for the human owner per "
+            "your SYNTHESIS MODE instructions: what was decided or "
+            "learned, the strongest surviving objections, concrete next "
+            "steps, and open questions — drawing on the whole manifest "
+            "above. No VERDICT line.")
+    elif persona == "monitor":
+        lines.append(
+            "\nThis is a monitor CHECKPOINT: judge the debate's progress "
+            "per your instructions and END your answer with your verdict "
+            "line — exactly one of 'VERDICT: continue', "
+            "'VERDICT: redirect: <note>', or 'VERDICT: conclude'.")
     else:
         lines.append(
-            f"\nYOUR JOB THIS TURN: delegate this ENTIRE turn to the "
-            f"'{persona}' sub-agent per your procedure steps 3-6 — pass it "
-            "the goal, mode, constraints, manifest, and recent-round text "
-            "above (plus any monitor redirect), call it exactly once, then "
-            "relay its answer verbatim via build_debate_report and finish.")
+            "\nWrite your round now: open with your one-line abstract (25 "
+            "words or fewer), a blank line, then your full argument in "
+            "plain markdown prose.")
     return "\n".join(lines)
+
+
+_PSEUDO_CALL_RE = re.compile(
+    r"^final_answer\(\s*(?:\"\"\"|'''|\"|')?(.*?)(?:\"\"\"|'''|\"|')?\s*\)?\s*$",
+    re.DOTALL)
+
+
+def _salvage_persona_text(agent) -> str:
+    """A persona that exhausted its steps often DID write a complete,
+    usable round — just as plain chat text instead of an actual
+    final_answer tool call (observed live with gpt-oss: every step a full
+    critique, is_final_answer=False on all of them). Recover the most
+    recent model output that is substantial prose. Deliberately LOOSER
+    than the personas' own contract check: a salvaged round with an
+    overlong first line or a typed-out pseudo final_answer("...") wrapper
+    is still a good argument — only code/JSON-shaped output is rejected,
+    since that would poison the next turn's input. Deterministic — no
+    extra model call."""
+    from .debate.format import _CODE_OPENERS
+
+    for step in reversed(agent.memory.steps):
+        candidate = _clean_round_text(getattr(step, "model_output", None) or "")
+        # Unwrap a pseudo-call the model TYPED instead of making: the
+        # argument inside is the round.
+        m = _PSEUDO_CALL_RE.match(candidate)
+        if m and m.group(1).strip():
+            candidate = _clean_round_text(m.group(1))
+        if len(candidate) < 300:
+            continue
+        first = candidate.splitlines()[0].strip()
+        if any(first.startswith(tok) for tok in _CODE_OPENERS):
+            continue
+        return candidate
+    return ""
+
+
+_VERDICT_RE = re.compile(
+    r"VERDICT:\s*(continue|redirect|conclude)\s*:?\s*(.*)", re.IGNORECASE)
+
+
+def _parse_monitor_verdict(text: str) -> tuple[str, str]:
+    """Deterministically extract the monitor's mandated verdict line. A
+    missing/garbled verdict degrades to 'continue' — the debate proceeds
+    and the monitor gets another checkpoint — rather than failing a turn
+    whose prose is otherwise fine."""
+    last = None
+    for m in _VERDICT_RE.finditer(text):
+        last = m
+    if last is None:
+        return "continue", ""
+    return last.group(1).lower(), last.group(2).strip()
 
 
 def _new_debate_job(session_id: str, round_num: int, persona: str,
@@ -549,48 +615,6 @@ def _parse_report(manager, answer) -> dict:
     return report
 
 
-_DEBATE_SALVAGE_TASK = (
-    "Your previous answer was not the required report dict. The work you "
-    "already did above still counts — do not redo it. In ONE code block: "
-    "call build_debate_report(...) with the persona's answer you already "
-    "obtained (status='completed', full_text=<the persona's full verbatim "
-    "answer>, abstract=<its one-line abstract>), then actually call "
-    "final_answer(report). Nothing else — no hand-written dict literals.")
-
-
-def _parse_debate_report(agent, answer) -> dict:
-    """Debate-turn counterpart to _parse_report — kept separate since a
-    debate report's shape (full_text/abstract/verdict) differs from the
-    general job report and the two should never be cross-parsed."""
-    from .debate_manager import extract_debate_report
-
-    report = extract_debate_report(answer)
-    if report is None:
-        print("[jobs] debate turn: unstructured final answer — attempting "
-             "report salvage")
-        try:
-            report = extract_debate_report(
-                agent.run(_DEBATE_SALVAGE_TASK, reset=False, max_steps=3))
-        except Exception as exc:  # noqa: BLE001 — salvage is best-effort
-            print(f"[jobs] debate salvage run failed: {type(exc).__name__}: {exc}")
-            report = None
-    if report is None:
-        text = (answer if isinstance(answer, str) else str(answer)).strip()
-        report = {"status": "needs_attention",
-                  "full_text": "The debate turn did not produce a "
-                               "structured report; raw answer follows.\n\n"
-                               + text[:4000],
-                  "abstract": "(unstructured answer — see full_text)",
-                  "verdict": "continue", "redirect_note": ""}
-    if report.get("status") not in ("completed", "needs_attention"):
-        report["status"] = "completed"
-    # Alias so the generic job-notify webhook and the /inbox card (which
-    # both read report.get("summary")) show something useful without
-    # needing to know about debate-specific report fields.
-    report.setdefault("summary", report.get("abstract", ""))
-    return report
-
-
 def _steps_exhausted(agent) -> bool:
     """True when the last run ended because the step budget ran out —
     smolagents records an AgentMaxStepsError ActionStep in memory before
@@ -634,15 +658,75 @@ def _exhaustion_report(job: dict, workspace: Path, segment_started: float) -> di
                           "re-dispatch with parent_job_id."]}
 
 
+def _run_raw_persona(spec: dict, task: str) -> str:
+    """One plain completion against the persona's system prompt — the audit
+    reviewer pool's proven pattern for models that fumble tool-calling.
+    One corrective retry when the answer violates the prose contract;
+    returns the best text obtained ('' only if the model produced nothing
+    usable at all)."""
+    from openai import OpenAI
+
+    from .debate.format import check_round_prose
+
+    client = OpenAI(base_url=config.OLLAMA_API_BASE,
+                    api_key=config.OLLAMA_API_KEY)
+    messages = [{"role": "system", "content": spec["raw_system"]},
+                {"role": "user", "content": task}]
+    best = ""
+    for _ in range(2):
+        resp = client.chat.completions.create(model=spec["model_id"],
+                                              messages=messages)
+        text = _clean_round_text(resp.choices[0].message.content or "")
+        if len(text) >= 200:
+            best = text
+        try:
+            check_round_prose(text, None)
+            return text
+        except Exception as exc:  # noqa: BLE001 — the check raises corrective feedback
+            messages += [
+                {"role": "assistant", "content": text},
+                {"role": "user", "content": f"{exc} Rewrite your ENTIRE "
+                                            "answer accordingly — do not "
+                                            "reference this correction."}]
+    return best
+
+
 def _run_debate_turn(agent, job: dict, workspace: Path) -> None:
-    """A debate turn is 'delegate once, relay verbatim' — no continuation
-    segments, and completion hands off to deterministic turn-advancement
-    (_advance_debate) instead of looping like the general job below."""
+    """A debate turn runs the persona DIRECTLY — there is no orchestrator
+    LLM in the loop. Everything an orchestrator would have done is
+    deterministic Python here: the task text is assembled by
+    _format_debate_task, the persona's final answer IS the round text (its
+    own final_answer_checks enforce the prose contract), the monitor's
+    verdict comes from regex-parsing its mandated VERDICT line, and
+    completion hands off to _advance_debate. An earlier design put a
+    CodeAgent relay between the worker and the persona; it failed
+    constantly by re-typing the persona's argument into giant string
+    literals, and it added nothing the code above can't do reliably.
+    A raw-mode persona (dict spec, see config.DEBATE_RAW_PERSONAS) is a
+    single plain completion instead of an agent run."""
+    debate = job["debate"]
+    session = _load_debate_session(debate["session_id"])
+    if session is None:
+        report = {"status": "needs_attention",
+                  "full_text": "session record not found",
+                  "abstract": "session record not found",
+                  "summary": "session record not found",
+                  "verdict": "continue", "redirect_note": ""}
+        job.update(status="needs_attention", report=report, finished_at=_now())
+        _save(job)
+        _notify("job.needs_attention", job)
+        _mark_debate_stuck(job, report)
+        return
+
     task = _format_debate_task(job, workspace)
+    is_raw = isinstance(agent, dict)
     try:
-        answer = agent.run(task, reset=True,
-                           additional_args={"workspace": str(workspace)})
-        report = _parse_debate_report(agent, answer)
+        if is_raw:
+            text = _run_raw_persona(agent, task)
+        else:
+            answer = agent.run(task, reset=True)
+            text = _clean_round_text(answer if isinstance(answer, str)
+                                     else str(answer))
     except Exception as exc:  # noqa: BLE001 — a failed run must land in the record
         job.update(status="failed", finished_at=_now(),
                    error=f"{type(exc).__name__}: {exc}")
@@ -651,6 +735,46 @@ def _run_debate_turn(agent, job: dict, workspace: Path) -> None:
         _notify("job.failed", job)
         _mark_debate_stuck(job, {"status": "failed"})
         return
+
+    if not is_raw and _steps_exhausted(agent):
+        # The forced max-steps answer bypasses the persona's prose check —
+        # don't trust it. But the persona often DID write a valid round in
+        # an earlier step and only fumbled the final_answer tool call;
+        # recover that deterministically before giving up on the turn.
+        text = _salvage_persona_text(agent)
+        if text:
+            print(f"[jobs] debate turn {job['id']}: persona exhausted its "
+                  "steps but a contract-valid round was salvaged from its "
+                  "memory")
+    if not text:
+        reason = ("persona produced no usable round (raw completion)"
+                  if is_raw else
+                  ("persona exhausted its step budget "
+                   f"({agent.max_steps} steps) with no salvageable round"
+                   if _steps_exhausted(agent)
+                   else "persona produced an empty answer"))
+        report = {"status": "needs_attention", "full_text": "",
+                  "abstract": f"(turn unusable: {reason})",
+                  "summary": f"(turn unusable: {reason})",
+                  "verdict": "continue", "redirect_note": ""}
+    else:
+        first_line = next((l.strip() for l in text.splitlines() if l.strip()),
+                          "")
+        verdict, redirect_note = "continue", ""
+        if debate["persona"] == "monitor":
+            if debate.get("synthesis"):
+                verdict = "conclude"
+            else:
+                verdict, redirect_note = _parse_monitor_verdict(text)
+                if not _VERDICT_RE.search(text):
+                    print(f"[jobs] debate turn {job['id']}: monitor omitted "
+                          "its VERDICT line — treating as 'continue'")
+        report = {"status": "completed", "full_text": text,
+                  "abstract": first_line[:200],
+                  # summary alias: the generic notify webhook and /inbox
+                  # card read report["summary"].
+                  "summary": first_line[:200],
+                  "verdict": verdict, "redirect_note": redirect_note}
 
     job.update(status=report["status"], report=report, finished_at=_now())
     _save(job)
@@ -751,7 +875,7 @@ _LIAISON_SALVAGE_TASK = (
 
 
 def _parse_liaison_turn(agent, answer) -> dict:
-    """Liaison-turn counterpart to _parse_report/_parse_debate_report — kept
+    """Liaison-turn counterpart to _parse_report — kept
     separate since a liaison turn's report shape (speech/reprompt/job_id/
     pending_action_id/delegated_to) differs from both and the three should
     never be cross-parsed."""
@@ -838,7 +962,15 @@ def _run_job(agents: dict, job: dict) -> None:
     is_debate = bool(job.get("debate"))
     is_liaison = bool(job.get("liaison"))
     if is_debate:
-        agent = agents["debate_manager"]
+        persona = job["debate"].get("persona", "")
+        agent = agents["debate_personas"].get(persona)
+        if agent is None:
+            job.update(status="failed", finished_at=_now(),
+                       error=f"unknown debate persona '{persona}'")
+            _save(job)
+            _notify("job.failed", job)
+            _mark_debate_stuck(job, {"status": "failed"})
+            return
     elif is_liaison:
         agent = agents["alexa_liaison"]
     else:
@@ -846,24 +978,36 @@ def _run_job(agents: dict, job: dict) -> None:
     workspace = _jobs_dir / job["id"] / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     job.update(status="running", started_at=_now(),
+               heartbeat_ts=time.time(),
                segments=job.get("segments", 1))
     _save(job)
 
-    log_tail: list[str] = [""]
+    # The heartbeat callback is registered ONCE per (long-lived) agent, so
+    # it must not close over this call's job — it reads the current job off
+    # the agent, which we re-point here on every run. (Closing over `job`
+    # was a real bug: every job after an agent's first heartbeat into the
+    # first job's finished record.) Raw-mode debate personas are plain dict
+    # specs with no step machinery — a single completion needs no
+    # heartbeat beyond the running-state save above.
+    if not isinstance(agent, dict):
+        agent._jobs_current = {"job": job, "tail": ""}
 
-    def _heartbeat(step, agent=None):
-        job["heartbeat_ts"] = time.time()
-        try:
-            log_tail[0] = (log_tail[0] + "\n" + str(step)[-500:])[-_LOG_TAIL_CHARS:]
-        except Exception:  # noqa: BLE001 — logging must never kill a job
-            pass
-        job["log_tail"] = log_tail[0]
-        _save(job)
+        def _heartbeat(step, agent=agent):
+            cur = getattr(agent, "_jobs_current", None)
+            if not cur:
+                return
+            cur["job"]["heartbeat_ts"] = time.time()
+            try:
+                cur["tail"] = (cur["tail"] + "\n" + str(step)[-500:])[-_LOG_TAIL_CHARS:]
+            except Exception:  # noqa: BLE001 — logging must never kill a job
+                pass
+            cur["job"]["log_tail"] = cur["tail"]
+            _save(cur["job"])
 
-    if not getattr(agent, "_jobs_heartbeat", False):
-        agent.step_callbacks.register(ActionStep, _heartbeat)
-        agent.step_callbacks.register(PlanningStep, _heartbeat)
-        agent._jobs_heartbeat = True
+        if not getattr(agent, "_jobs_heartbeat", False):
+            agent.step_callbacks.register(ActionStep, _heartbeat)
+            agent.step_callbacks.register(PlanningStep, _heartbeat)
+            agent._jobs_heartbeat = True
 
     if is_debate:
         _run_debate_turn(agent, job, workspace)
@@ -941,10 +1085,18 @@ def _recover_stale() -> None:
                 _mark_debate_stuck(job, {"status": "failed"})
 
 
+def _persona_model_id(name: str) -> str:
+    override = {"entrepreneur": config.DEBATE_ENTREPRENEUR_MODEL_ID,
+                "critic": config.DEBATE_CRITIC_MODEL_ID,
+                "monitor": config.DEBATE_MONITOR_MODEL_ID}.get(name, "")
+    return override or config.GENERAL_MODEL_ID
+
+
 def _worker_loop() -> None:
-    # Deferred import: all three need mcp-tools reachable for tool loading.
+    # Deferred import: all of these need mcp-tools reachable for tool loading.
     from .alexa_liaison import build_alexa_liaison_agent
-    from .debate_manager import build_debate_manager_agent
+    from .debate import (PERSONA_SYSTEM_PROMPTS, build_critic_agent,
+                         build_entrepreneur_agent, build_monitor_agent)
     from .manager import build_manager_agent
 
     _jobs_dir.mkdir(parents=True, exist_ok=True)
@@ -952,9 +1104,22 @@ def _worker_loop() -> None:
     _liaison_dir.mkdir(parents=True, exist_ok=True)
     _recover_stale()
     manager = build_manager_agent()  # built once; reused with reset=True
-    debate_manager = build_debate_manager_agent()  # same, for debate turns
     alexa_liaison = build_alexa_liaison_agent()  # same, for liaison turns
-    agents = {"manager": manager, "debate_manager": debate_manager,
+    # Debate personas are run DIRECTLY by _run_debate_turn — no orchestrator
+    # LLM sits between the worker and a persona (see that function's
+    # docstring for the failed-relay history). A persona in
+    # config.DEBATE_RAW_PERSONAS runs as a raw completion (dict spec)
+    # instead of a ToolCallingAgent — see config for why.
+    builders = {"entrepreneur": build_entrepreneur_agent,
+                "critic": build_critic_agent,
+                "monitor": build_monitor_agent}
+    from .debate.format import RAW_MODE_NOTE
+    debate_personas = {
+        name: ({"raw_system": PERSONA_SYSTEM_PROMPTS[name] + " " + RAW_MODE_NOTE,
+                "model_id": _persona_model_id(name)}
+               if name in config.DEBATE_RAW_PERSONAS else build())
+        for name, build in builders.items()}
+    agents = {"manager": manager, "debate_personas": debate_personas,
               "alexa_liaison": alexa_liaison}
     _write_roster(manager)
     print(f"[jobs] worker ready — polling {_jobs_dir} every {_POLL_S}s")

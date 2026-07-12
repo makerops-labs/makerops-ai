@@ -2,13 +2,15 @@
 the entrepreneur's idea. Deliberately a different model lineage than the
 entrepreneur/monitor (see config.DEBATE_CRITIC_MODEL_ID) so it doesn't
 share their training blind spots — the same reasoning as the audit
-reviewer pools. See debate_manager.py for how a turn is assembled."""
+reviewer pools. See jobs.py's _format_debate_task/_run_debate_turn for how
+a turn is assembled and run (the worker calls this persona directly)."""
 
 from smolagents import ToolCallingAgent
 
 from .. import config
 from ..context import with_baseline
 from ..model import get_model
+from ..thoughts import THINK_FIRST
 from ..tools import get_domain_tools
 from .format import ROUND_CONTRACT, check_round_prose
 
@@ -28,7 +30,10 @@ _CRITIC_SYSTEM = (
     "not required to ever concede the idea is good — persistent, "
     "well-reasoned skepticism is your value — but do not manufacture "
     "objections once the strong ones are exhausted; if you're repeating "
-    "yourself, say so plainly instead of padding. " + ROUND_CONTRACT
+    "yourself, say so plainly instead of padding. Use your thinking to "
+    "draft your objections and then attack your own draft — keep only the "
+    "objections that survive. "
+    + THINK_FIRST + " " + ROUND_CONTRACT
 )
 
 

@@ -24,7 +24,31 @@ ROUND_CONTRACT = (
     "allowed ONLY if the debate goal is itself about code and you are "
     "quoting a short example inside an otherwise-prose argument. Write TO "
     "the other debaters and the human observer, never to the orchestrator "
-    "that invoked you."
+    "that invoked you. SUBMISSION: you must deliver the answer by CALLING "
+    "the final_answer tool with your complete text as its argument — "
+    "writing the answer as a plain chat message submits NOTHING and the "
+    "turn is wasted; when your argument is ready, your one and only next "
+    "action is that final_answer call."
+)
+
+# Appended to a persona's instructions ONLY when it runs as a raw
+# completion (config.DEBATE_RAW_PERSONAS): last-position override of the
+# two agent-mode assumptions that break a raw run. Without the tools line,
+# a tool-trained model (gpt-oss) reads the persona's "use your web tool"
+# hint literally, emits a tool call into the void, and the completion ends
+# with an EMPTY visible answer — thoughts only, done_reason=stop — which
+# reads as "persona produced no usable round". Without the submission
+# line, ROUND_CONTRACT's final_answer-call instruction makes it type out
+# pseudo tool-call syntax instead of prose.
+RAW_MODE_NOTE = (
+    "RAW MODE OVERRIDE — this run gives you NO tools: no web search, no "
+    "browsing, no final_answer tool, nothing to call. Any instruction "
+    "above about using or calling tools does not apply; never emit or "
+    "type out a tool call. Argue entirely from the debate material given "
+    "to you and your own knowledge, and be honest when a fact would need "
+    "checking you cannot do here. Your plain-text message IS the "
+    "submission: write the round directly as your answer, in the OUTPUT "
+    "CONTRACT format (one-line abstract, blank line, prose argument)."
 )
 
 # Leading tokens that mean the model answered with code/data instead of

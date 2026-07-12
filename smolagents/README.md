@@ -2,19 +2,20 @@
 
 smolagents is Hugging Face's minimal agent framework. This service is both a **Python workspace** for authoring your own agents and a **Docker service** that runs them behind a Gradio chat UI — all backed by the local Ollama server, so nothing leaves the host.
 
-It ships with nine starter agents (models follow the lead-per-domain hierarchy in [README.md](../README.md)):
+It ships with ten starter agents (models follow the lead-per-domain hierarchy in [README.md](../README.md); the general lead is the `qwen3.6:35b-64k` derivative — stop `trellis` before agent runs, its resident host RAM starves 35b loads, see the hardware envelope in [CLAUDE.md](../CLAUDE.md)):
 
 | Agent | Model | Role |
 | --- | --- | --- |
-| `manager` | `qwen3.5:9b-64k` | Orchestrator served by the UI and the job worker — validates briefs, plans, delegates, audits by risk, reports (see "Orchestration") |
-| `web_researcher` | `qwen3.5:9b-64k` | Web search + page reading (mcp-tools web domain, SearXNG-backed) — quick one-off sourced lookups |
-| `researcher` | `qwen3.5:9b-64k` | Structured research briefs — numbered findings each attributed to a source URL, plus a confidence-and-gaps note. Delegated to by the manager and by debate turns; the Researcher Open WebUI preset is the direct-chat equivalent |
+| `manager` | `qwen3.6:35b-64k` | Orchestrator served by the UI and the job worker — validates briefs, plans, delegates, audits by risk, reports (see "Orchestration") |
+| `web_researcher` | `qwen3.6:35b-64k` | Web search + page reading (mcp-tools web domain, SearXNG-backed) — quick one-off sourced lookups |
+| `researcher` | `qwen3.6:35b-64k` | Structured research briefs — numbered findings each attributed to a source URL, plus a confidence-and-gaps note. Delegated to by the manager and by debate turns; the Researcher Open WebUI preset is the direct-chat equivalent |
 | `coder` | `qwen3.6:35b` | Writes and executes Python for data work and programming tasks |
-| `ops` | `qwen3.5:9b-64k` | Operates the business stack via mcp-tools (wiki, inventory, projects, automation, helpdesk) |
-| `writer` | `qwen3.5:9b-64k` | Written deliverables: docs, reports, summaries, marketing copy; publishes durable docs to Outline |
-| `studio` | `qwen3.5:9b-64k` | Media assets: images (ComfyUI/FLUX), diagrams (draw.io), speech audio (Kokoro TTS), image→3D models (TRELLIS). No video |
+| `ops` | `qwen3.6:35b-64k` | Operates the business stack via mcp-tools (wiki, inventory, projects, automation, helpdesk) |
+| `writer` | `qwen3.6:35b-64k` | Written deliverables: docs, reports, summaries, marketing copy; publishes durable docs to Outline |
+| `studio` | `qwen3.6:35b-64k` | Media assets: images (ComfyUI/FLUX), diagrams (draw.io), speech audio (Kokoro TTS), image→3D models (TRELLIS). No video |
 | `auditor` | reviewer pool | Independent multi-model review of finished work (see below) |
-| `maintainer` | `qwen3.5:9b-64k` | Self-improvement loop: reviews job/audit history, researches fixes, files Outline reports + Plane issues (see "Self-improvement loop") |
+| `maintainer` | `qwen3.6:35b-64k` | Self-improvement loop: reviews job/audit history, researches fixes, files Outline reports + Plane issues (see "Self-improvement loop") |
+| `investment_strategist` | `qwen3.6:35b-64k` | Sourced, risk-weighted investment assessments (thesis, risks, base rates, falsifiers, verdict); carries `researcher` as its own sub-agent and keeps warm memos in the registered `investments` project. The Investment Strategist Open WebUI preset is the direct-chat equivalent |
 
 - **Docs:** <https://huggingface.co/docs/smolagents>
 - **GitHub:** <https://github.com/huggingface/smolagents>
@@ -34,10 +35,11 @@ reviewer pool) pulled before agents can run:
 
 ```bash
 cd ../../makerops-core/ai/ollama && ./start.sh
-docker exec ollama ollama pull qwen3.6:35b       # coding lead (~23 GB, MoE 3B active)
-docker exec ollama ollama pull qwen3.5:9b        # general lead (~6.6 GB)
-# 64K-context variant the agents use (Ollama's default context is too small):
-printf 'FROM qwen3.5:9b\nPARAMETER num_ctx 64000\n' | docker exec -i ollama sh -c 'cat > /tmp/Modelfile && ollama create qwen3.5:9b-64k -f /tmp/Modelfile'
+docker exec ollama ollama pull qwen3.6:35b       # coding + general lead base (~23 GB, MoE 3B active)
+# 64K-context variant the agents use as the general lead (Ollama's default
+# context is too small):
+printf 'FROM qwen3.6:35b\nPARAMETER num_ctx 64000\n' | docker exec -i ollama sh -c 'cat > /tmp/Modelfile && ollama create qwen3.6:35b-64k -f /tmp/Modelfile'
+docker exec ollama ollama pull qwen3.5:9b        # vision lead / light presets (~6.6 GB)
 # Reviewer pool for the auditor:
 docker exec ollama ollama pull qwen3-coder:30b   # ~19 GB
 docker exec ollama ollama pull gemma4:12b        # ~7.6 GB
@@ -112,6 +114,11 @@ by re-scaffolding or by hand-wrapping their `instructions=` with
 Agents that combine several domains must merge tools with
 `tools.get_domains_tools(*domains)` — every domain endpoint carries
 `tools_help`, and smolagents requires unique tool names per agent.
+`get_domains_tools` also appends the local `current_datetime` tool, so
+every ToolCallingAgent has clock access — models confabulate dates
+otherwise (observed live: memos date-stamped a day off). The matching
+Open WebUI mechanism is the `{{CURRENT_DATETIME}}` template variable in
+every preset's baseline block.
 
 ---
 
@@ -370,15 +377,16 @@ Browser                              Open WebUI / any MCP client
           ▼                                   ▼
         smolagents  (built from ./Dockerfile)
                 ├─► job worker thread  (polls /data/jobs every 2s, one job at a time)
-                ├─► manager agent  (qwen3.5:9b-64k — orchestrator + agent scaffolding tools)
-                │     ├─► web_researcher  (qwen3.5:9b-64k — web search + page reading)
-                │     ├─► researcher  (qwen3.5:9b-64k — structured, sourced research briefs)
+                ├─► manager agent  (qwen3.6:35b-64k — orchestrator + agent scaffolding tools)
+                │     ├─► web_researcher  (qwen3.6:35b-64k — web search + page reading)
+                │     ├─► researcher  (qwen3.6:35b-64k — structured, sourced research briefs)
                 │     ├─► coder  (qwen3.6:35b — sandboxed Python execution)
-                │     ├─► ops  (qwen3.5:9b-64k — wiki/inventory/projects/automation/helpdesk)
-                │     ├─► writer  (qwen3.5:9b-64k — docs/summaries/copy → Outline)
-                │     ├─► studio  (qwen3.5:9b-64k — images/diagrams/TTS audio/3D models)
+                │     ├─► ops  (qwen3.6:35b-64k — wiki/inventory/projects/automation/helpdesk)
+                │     ├─► writer  (qwen3.6:35b-64k — docs/summaries/copy → Outline)
+                │     ├─► studio  (qwen3.6:35b-64k — images/diagrams/TTS audio/3D models)
                 │     ├─► auditor  (reviewer pool — multi-model second opinions)
-                │     ├─► maintainer  (qwen3.5:9b-64k — self-improvement: job/audit review → Outline + Plane)
+                │     ├─► maintainer  (qwen3.6:35b-64k — self-improvement: job/audit review → Outline + Plane)
+                │     ├─► investment_strategist  (qwen3.6:35b-64k — sourced investment assessments; owns a researcher sub-agent)
                 │     └─► agents/custom/*  (auto-discovered custom agents)
                 ├─► host.docker.internal:11434/v1  → Ollama OpenAI-compatible API
                 ├─► host.docker.internal:8099/mcp/<domain>/  → mcp-tools (tool server)

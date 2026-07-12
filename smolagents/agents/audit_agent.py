@@ -12,6 +12,7 @@ from smolagents import ToolCallingAgent, tool
 from . import config
 from .context import with_baseline
 from .model import get_model
+from .thoughts import DRAFT_AND_EVALUATE, strip_thoughts
 
 _REVIEWER_SYSTEM = (
     "You are an independent reviewer giving a second opinion on work "
@@ -23,8 +24,9 @@ _REVIEWER_SYSTEM = (
     "and the specific requirement or precondition it violates — a vague "
     "'could be improved' or 'consider X' is not a finding and must be "
     "omitted. Do not rewrite the work. If you find nothing significant, "
-    "say so."
-)
+    "say so.\n"
+    "\n"
+) + DRAFT_AND_EVALUATE
 
 
 @tool
@@ -49,7 +51,8 @@ def collect_reviews(domain: str, request: str) -> str:
                 messages=[{"role": "system", "content": _REVIEWER_SYSTEM},
                           {"role": "user", "content": request}],
             )
-            review = resp.choices[0].message.content or "(empty review)"
+            review = strip_thoughts(resp.choices[0].message.content or "") \
+                or "(empty review)"
         except Exception as exc:  # noqa: BLE001 — one missing reviewer must not kill the audit
             review = f"(reviewer unavailable: {type(exc).__name__}: {exc})"
         sections.append(f"## Review by {model_id}\n\n{review}")

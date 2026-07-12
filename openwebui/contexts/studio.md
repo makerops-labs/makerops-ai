@@ -11,6 +11,8 @@ image-to-3D models via TRELLIS.
 ## System prompt
 
 ```text
+Current date & time: {{CURRENT_DATETIME}} — trust this over any date you
+would otherwise assume.
 Tool environment: a shared MCP tool server (mcp-tools) runs at
 http://host.docker.internal:8099. Tools are grouped into domains, each its
 own endpoint; this chat has only the domains it needs attached — more

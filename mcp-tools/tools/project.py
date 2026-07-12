@@ -63,6 +63,16 @@ Status: assigned, no work started yet.
 
 (none yet — as the project grows, link detail docs here, e.g. under docs/,
 and keep this file itself concise.)
+
+## Curation rules (for whoever updates this file)
+
+- Write distilled atomic facts and their implications — what a change
+  MEANS for the project — never pasted transcripts or raw tool output.
+- Update with targeted edits (project_edit_file); before replacing a
+  section, re-read it — dropping a still-true fact is a regression even
+  though the write succeeds.
+- Park bulky detail in linked files under docs/; this file stays small
+  enough for a stateless agent to load first, every time.
 """
 
 

@@ -20,6 +20,7 @@ from . import config
 from .audit_agent import build_audit_agent
 from .coding_agent import build_coding_agent
 from .context import with_baseline
+from .investment_agent import build_investment_agent
 from .maintainer_agent import build_maintainer_agent
 from .model import get_model
 from .ops_agent import build_ops_agent
@@ -57,7 +58,10 @@ business and creative tasks for one user. Follow this procedure:
    web_researcher for a quick one-off sourced lookup, researcher when the
    task's decisions rest on facts — it returns a structured research
    brief (numbered findings with source URLs plus a confidence-and-gaps
-   note) you can hand to other team members verbatim. Write long,
+   note) you can hand to other team members verbatim. Investment, market,
+   and opportunity-vs-risk analyses go to investment_strategist whole — it
+   commissions its own research and keeps memos in the `investments`
+   project, so hand it the question, not pre-gathered facts. Write long,
    detailed sub-task briefs — each team member only knows what you tell
    it. Pass bulky source material via additional_args instead of pasting
    it into the task string. The same discipline applies to what comes
@@ -98,7 +102,11 @@ business and creative tasks for one user. Follow this procedure:
    off or building on it.
    Concise, it must stay small. Park bulky material in files under the
    workspace (notes/<topic>.md, drafts/...) and reference them from the
-   synopsis instead of carrying them in conversation. The synopsis is your
+   synopsis instead of carrying them in conversation. Synopsis entries are
+   DISTILLATIONS — atomic facts and their implications for the task, in
+   your own words — never pasted returns or raw tool output. When
+   updating, keep earlier facts that still hold: an update that erases
+   still-true knowledge is a regression, even though the write succeeds. The synopsis is your
    state file, never itself a deliverable (see 2b). You have a HARD budget
    of {config.MANAGER_MAX_STEPS} steps per segment — if the remaining plan
    will not fit in the steps you have left, update the synopsis and call
@@ -121,12 +129,15 @@ business and creative tasks for one user. Follow this procedure:
     pointers to detail docs before planning anything. Use project_glob /
     project_grep / project_list_dir to survey the project (and sibling
     directories under ~/workspace as prior art) before writing. Update
-    PROJECT_CONTEXT.md via project_write_file/project_edit_file whenever the
+    PROJECT_CONTEXT.md via project_edit_file (targeted edits — rewriting a
+    long-lived context doc wholesale with project_write_file silently drops
+    still-true facts; only use it when the doc genuinely needs rebuilding,
+    after re-reading it) whenever the
     project's state changes meaningfully — new component, architecture
     decision, milestone — and always right before a review checkpoint, so
     the next job (possibly a different session) picks up accurate context.
     Keep it concise; park bulky detail in linked files under docs/, the same
-    discipline as synopsis.md.
+    distillation-and-retention discipline as synopsis.md.
 6. DELIVER. Durable deliverables (project docs, reports, knowledge-base
    articles) are published to the Outline wiki by writer or ops:
    collection 'Agent Deliverables', document name
@@ -375,7 +386,7 @@ def build_manager_agent() -> CodeAgent:
                         build_coding_agent(),
                         build_ops_agent(), build_writer_agent(),
                         build_studio_agent(), build_audit_agent(),
-                        build_maintainer_agent(),
+                        build_maintainer_agent(), build_investment_agent(),
                         *_build_custom_agents()],
         additional_authorized_imports=["json", "pathlib", "datetime"],
         instructions=with_baseline(_PROCEDURE),

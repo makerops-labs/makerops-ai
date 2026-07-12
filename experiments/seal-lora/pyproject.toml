@@ -1,0 +1,16 @@
+[project]
+name = "seal-lora"
+version = "0.1.0"
+description = "Minimal SEAL inner-loop prototype: self-edit -> QLoRA SFT -> closed-book eval"
+requires-python = ">=3.10"
+dependencies = [
+    "torch>=2.3",
+    "transformers>=4.51",
+    "peft>=0.15",
+    "bitsandbytes>=0.45",
+    "datasets>=3.0",
+    "accelerate>=1.0",
+]
+
+[tool.setuptools]
+py-modules = ["common", "selfedit", "train", "eval"]
