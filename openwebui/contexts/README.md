@@ -47,6 +47,7 @@ tuning you do in the UI.
 | Context | Base model | Tool domains |
 | --- | --- | --- |
 | [Task Dispatcher](task-dispatcher.md) | qwen3.6:35b-64k | agents, approvals, web, outline |
+| [App Builder](app-builder.md) | qwen3.6:35b-64k | devteam, project |
 | [Debate Moderator](debate-moderator.md) | qwen3.6:35b-64k | debate, web |
 | [Researcher](researcher.md) | qwen3.6:35b-64k | web |
 | [Investment Strategist](investment-strategist.md) | qwen3.6:35b-64k | web, project |
@@ -101,6 +102,25 @@ the task inbox at `mcp.localhost/inbox` and can notify via
 go to the Outline collection **"Agent Deliverables"** (create it once in
 Outline); direct writes from the Task Dispatcher chat go wherever the
 user asks.
+
+### Starting a devteam engagement
+
+**App Builder** is the front door to the devteam system: a lead-architect
+agent plus specialist engineers/analysts/reviewers (smolagents'
+`agents/devteam/`) that build an entire application in a registered
+`~/workspace/<project>` directory from a product plan, phase by phase
+(requirements → architecture → scaffold → milestones → qa → docs), each
+phase a background job. Unlike a debate, advancement is user-gated at the
+configured sign-offs (default: requirements, architecture, final
+delivery) and fully autonomous between them; the engagement pauses as
+`awaiting_input` whenever the architect has questions and resumes with
+`devteam_answer` — this is the one queue where the team CAN ask the user
+questions mid-run. The App Builder preset refines the plan, registers the
+project, starts the engagement, relays questions, and records the user's
+approve/revise verdicts; it deliberately does NOT carry the agents
+domain, and Task Dispatcher deliberately does not carry devteam —
+engagement semantics (answer/approve on a parked session) and plain-job
+semantics (`parent_job_id` re-dispatch) confuse a single preset.
 
 ### Starting a debate
 

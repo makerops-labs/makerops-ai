@@ -72,6 +72,7 @@ static baseline block ([openwebui/contexts/_baseline.md](../openwebui/contexts/_
 | `agents` | `agent_list`, `agent_dispatch`, `agent_job_status`, `agent_job_result`, `agent_jobs_list`, `agent_job_history`, `agent_read`, `agent_create`, `propose_code_change` | smolagents running (for dispatch) |
 | `approvals` | `approval_status`, `list_pending_approvals`, `agent_audit_history` (read-only for models) | — |
 | `project` | `project_read_file`, `project_list_dir`, `project_glob`, `project_grep` (read anywhere under `~/workspace`); `project_register`, `project_write_file`, `project_edit_file`, `project_set_status`, `project_list`, `project_run_command` (write/execute, confined to a registered project) | `WORKSPACES_ROOT` mounted (+ `sandbox` running for `project_run_command`) |
+| `devteam` | `devteam_start`, `devteam_status`, `devteam_list`, `devteam_result` (track); `devteam_answer`, `devteam_approve`, `devteam_revise`, `devteam_resume`, `devteam_cancel` (the five user-driven transitions) — software-development engagements: a lead-architect team builds an app in a registered project from a product plan, phase by phase, with sign-off gates and mid-run questions (see root README "Devteam engagements") | smolagents running (phases are background jobs); the target project registered via `project` |
 
 `fetch_url` reviews any file type it can extract information from: web pages
 (→ markdown), JSON/XML/CSV/source (as text), PDF/docx/xlsx/pptx/epub (text

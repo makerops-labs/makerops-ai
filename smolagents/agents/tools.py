@@ -21,6 +21,7 @@ from . import config
 
 _clients: list[MCPClient] = []
 _mounted: set[str] | None | bool = False  # False = not yet fetched
+_domain_tools_cache: dict[str, list] = {}
 
 
 @tool
@@ -48,7 +49,19 @@ def _mounted_domains() -> set[str] | None:
 
 
 def get_domain_tools(domain: str) -> list:
-    """Tools from one mcp-tools domain endpoint. Empty list if unavailable."""
+    """Tools from one mcp-tools domain endpoint. Empty list if unavailable.
+
+    Cached per domain for the process lifetime: many agents in the same
+    process request the same domain (e.g. every devteam specialist wants
+    'project'), and each MCPClient holds a persistent connection to
+    mcp-tools — opening one per agent instead of one per domain multiplies
+    concurrent connections with the size of the team and was observed live
+    to starve mcp-tools' connection handling during a large team's startup
+    (dozens of agents piling on). The returned Tool objects are stateless
+    wrappers around the shared client's calls, safe to hand to multiple
+    agents at once."""
+    if domain in _domain_tools_cache:
+        return _domain_tools_cache[domain]
     mounted = _mounted_domains()
     if mounted is None:
         print(f"[tools] mcp-tools server unreachable at {config.MCP_TOOLS_URL} "
@@ -68,6 +81,7 @@ def get_domain_tools(domain: str) -> list:
               f"({type(exc).__name__}); continuing without it.")
         return []
     _clients.append(client)  # keep the session alive for the app lifetime
+    _domain_tools_cache[domain] = tools
     return tools
 
 

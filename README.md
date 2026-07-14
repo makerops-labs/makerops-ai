@@ -286,6 +286,49 @@ for. `coder` and `manager` both use it; before reporting a project job
 done, the manager has `coder` actually run the test suite rather than
 assume the code works.
 
+### Devteam engagements (build an app from a product plan)
+
+The dev-shop tier on top of project workspaces: a **lead architect** agent
+orchestrating a specialist software team (product analyst, five role-briefed
+engineers, security reviewer, tech writer, plus the shared auditor and
+researcher — `smolagents/agents/devteam/`) builds an entire application in
+a registered project directory from a product plan you provide, phase by
+phase: requirements → architecture → scaffold → implementation milestones
+(planned by the architecture phase itself) → qa → docs. Each phase runs as
+one background job through the same segment/synopsis machinery as any long
+manager job; the engagement's durable state machine lives in
+`smolagents/data/smolagents/devteam/<id>/session.json` (a fourth parallel
+queue beside jobs/debates/liaison, same mcp-tools bind-mount ownership
+split).
+
+Two things distinguish it from `agent_dispatch`:
+
+- **It can ask you questions mid-run.** When the architect hits a real
+  product decision, the engagement parks as `awaiting_input` (webhook
+  `devteam.needs_input` carries the questions), and resumes — same phase,
+  same working memory — when you answer via `devteam_answer`. No more
+  "the team cannot ask questions mid-run".
+- **You sign off like a client, not a babysitter.** Phases listed in the
+  engagement's `gates` (default `key`: requirements, architecture, final
+  docs delivery) park as `awaiting_review` until you `devteam_approve` or
+  `devteam_revise` (rework with your feedback injected verbatim);
+  everything between gates auto-advances — the worker queues the next
+  phase itself, debate-style, notifying you informationally at each
+  milestone. `gates="all"` or `"none"` change the contract per
+  engagement. Within a phase nothing is people-gated at all: project
+  writes and sandboxed runs are notify-tier, so the team iterates freely.
+
+Start one from the **App Builder** chat preset
+([openwebui/contexts/app-builder.md](openwebui/contexts/app-builder.md)) —
+it interviews you into a concrete plan, registers the project, calls
+`devteam_start`, relays questions, and records your verdicts. Track with
+`devteam_status` / `devteam_result` or the inbox's engagement cards; a
+crashed or failed phase parks as `stuck` (webhook `devteam.stuck`) and
+recovers with `devteam_resume`, or `devteam_cancel` ends the engagement
+(project files always remain). An architecture phase that fails to produce
+a machine-parseable milestone plan is parked `stuck` too — the plan is
+validated by deterministic worker code, never guessed.
+
 ### Startup order
 
 Ollama first (in makerops-core, with the models from the hierarchy table

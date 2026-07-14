@@ -17,6 +17,20 @@ It ships with ten starter agents (models follow the lead-per-domain hierarchy in
 | `maintainer` | `qwen3.6:35b-64k` | Self-improvement loop: reviews job/audit history, researches fixes, files Outline reports + Plane issues (see "Self-improvement loop") |
 | `investment_strategist` | `qwen3.6:35b-64k` | Sourced, risk-weighted investment assessments (thesis, risks, base rates, falsifiers, verdict); carries `researcher` as its own sub-agent and keeps warm memos in the registered `investments` project. The Investment Strategist Open WebUI preset is the direct-chat equivalent |
 
+A second, separate team lives in `agents/devteam/`: a **lead architect**
+(manager-shaped orchestrator, general lead) managing `product_analyst`, five
+role-briefed engineers (`backend_engineer`, `frontend_engineer`,
+`data_engineer`, `devops_engineer`, `qa_engineer` — all on the coding lead),
+`security_reviewer`, `tech_writer`, plus fresh instances of `auditor` and
+`researcher`. It is never registered on the general manager; the job worker
+runs it for **devteam engagement** phases — building an entire application
+in a registered project workspace from a product plan, with user sign-off
+gates and mid-run questions (the engagement parks `awaiting_input` and
+resumes with the user's answers). See the root [README.md](../README.md)
+"Devteam engagements" for the concept and the mcp-tools `devteam` domain
+for the controls; models/step budgets are env-tunable
+(`SMOLAGENTS_DEVTEAM_*`, see `.env.example`).
+
 - **Docs:** <https://huggingface.co/docs/smolagents>
 - **GitHub:** <https://github.com/huggingface/smolagents>
 

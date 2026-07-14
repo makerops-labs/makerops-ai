@@ -91,6 +91,12 @@ AGENT_DEBATES_DIR = Path(_env("AGENT_DEBATES_DIR", "/agent-debates"))
 # tools/liaison_domain.py and tools/liaison_store.py.
 AGENT_LIAISON_DIR = Path(_env("AGENT_LIAISON_DIR", "/agent-liaison"))
 
+# Shared devteam engagement store (smolagents/data/smolagents/devteam
+# bind-mounted rw) for devteam_start / status / answer / approve / revise /
+# resume / cancel. A fourth, parallel queue alongside the three above — see
+# tools/devteam_domain.py and tools/devteam_store.py.
+AGENT_DEVTEAM_DIR = Path(_env("AGENT_DEVTEAM_DIR", "/agent-devteam"))
+
 # Debate round-count defaults/ceiling — mode-dependent default, caller
 # overridable up to the hard ceiling (see debate_start).
 DEBATE_MAX_ROUNDS_NARROW = int(_env("DEBATE_MAX_ROUNDS_NARROW", "6"))

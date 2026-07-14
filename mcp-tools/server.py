@@ -24,7 +24,8 @@ from starlette.responses import (HTMLResponse, JSONResponse, PlainTextResponse,
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from tools import available_domains, skipped_domains, config, jobs_store, policy
+from tools import (available_domains, skipped_domains, config, devteam_store,
+                   jobs_store, policy)
 from tools.docs_tree import DocsTree
 
 # ── Compose the MCP apps ───────────────────────────────────────────────────────
@@ -225,17 +226,58 @@ def _job_card(job: dict) -> str:
     </div>"""
 
 
+def _engagement_card(session: dict) -> str:
+    """Read-only devteam engagement card: phase progress, open questions,
+    and the latest phase summary. All steering happens via the devteam
+    MCP tools (answer/approve/revise/resume/cancel), not this page."""
+    status = session.get("status", "?")
+    phases = session.get("phases", [])
+    done = sum(1 for p in phases if p.get("status") in ("approved", "done"))
+    current = session.get("current_phase", 0)
+    phase_name = phases[current].get("name", "?") if 0 <= current < len(phases) else "?"
+    latest_summary = next(
+        (p["summary"] for p in reversed(phases[:current + 1]) if p.get("summary")), "")
+    questions = "".join(f"<li>❓ {html.escape(str(q))}</li>"
+                        for q in session.get("open_questions", []) or [])
+    table = html.escape(devteam_store.render_phase_table(session))
+    stop = session.get("stop_reason") or ""
+    # awaiting_* states are the ones a human must act on — amber like
+    # needs_attention.
+    css_status = ("needs_attention"
+                  if status in ("awaiting_input", "awaiting_review", "stuck")
+                  else status)
+    return f"""
+    <div class="card">
+      <h3><span class="st-{html.escape(css_status)}">{html.escape(status)}</span>
+          — engagement on '{html.escape(session.get('project', ''))}'
+          <span class="badge">{html.escape(session['id'])}</span></h3>
+      <div class="meta">phase {done}/{len(phases)} done · at {html.escape(phase_name)}
+          · created {session.get('created_at')} · updated {session.get('updated_at')}</div>
+      {f"<p>{html.escape(str(latest_summary)[:800])}</p>" if latest_summary else ''}
+      {f"<ul class='dlv'>{questions}</ul>" if questions else ''}
+      {f"<p class='meta'>⚠ {html.escape(stop)}</p>" if stop else ''}
+      <details><summary class="meta">phase table</summary><pre>{table}</pre></details>
+    </div>"""
+
+
 async def inbox_page(request: Request):
     if not _authorized(request):
         return _auth_page()
     jobs = jobs_store.list_jobs() if jobs_store.available() else []
     counts = jobs_store.counts() if jobs_store.available() else {}
     cards = "".join(_job_card(j) for j in jobs)
+    engagements = (devteam_store.list_sessions()
+                   if devteam_store.available() else [])
+    engagement_cards = "".join(_engagement_card(s) for s in engagements)
+    engagement_section = (
+        f"<h2 class='meta'>Devteam engagements</h2>{engagement_cards}"
+        "<h2 class='meta'>Jobs</h2>" if engagement_cards else "")
     body = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>MCP Tools — Task Inbox</title><style>{_PAGE_CSS}</style></head><body>
     <header><h1><span>MCP Tools</span> — Task Inbox</h1>
     <div class="meta">{counts.get('queued', 0)} queued · {counts.get('running', 0)} running</div>
     {_NAV}</header><main>
+    {engagement_section}
     {cards if cards else '<div class="empty">No agent jobs yet. Dispatch one with agent_dispatch (agents tool domain).</div>'}
     </main></body></html>"""
     resp = HTMLResponse(body)

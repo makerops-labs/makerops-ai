@@ -450,12 +450,56 @@ is already in place; this is the remaining manual setup checklist:
       confirm "confirm"/"deny" resolves it via the same `/approvals` gate
       any other client uses — never an LLM's own judgment call.
 
+## 5j. Devteam engagements (build an app from a product plan)
+
+A lead-architect agent plus a specialist software team builds an entire
+application in a registered project workspace, phase by phase with
+sign-off gates and mid-run questions — see the root
+[README.md](../README.md) "Devteam engagements" for the concept. Reuses
+the agent job queue (§5d) and project workspaces (§5f + §5g), so complete
+those first. Notifications (§6) are strongly recommended here — the whole
+point is being pinged when the team needs you.
+
+- [ ] Recreate mcp-tools so it mounts the devteam session store (new
+      compose volume): `cd mcp-tools && docker compose -p mcp-tools up -d`
+      (remember: `restart` never applies volume changes). Check
+      `curl -s http://localhost:8099/healthz | jq .domains` includes
+      `"devteam"`, and restart smolagents (`docker restart smolagents` —
+      job queue idle first) so its worker builds the lead architect
+      alongside manager/debate/liaison.
+- [ ] Create the **App Builder** context model per
+      [openwebui/contexts/app-builder.md](../openwebui/contexts/app-builder.md)
+      (§4 walkthrough): tool connections `/mcp/devteam/` and
+      `/mcp/project/`, base model `qwen3.6:35b-64k`, native function
+      calling, native capabilities off.
+- [ ] **Dry-run**: create and register a scratch project
+      (`mkdir ~/workspace/devteam-demo`, then `project_register` from the
+      App Builder chat), start a tiny engagement ("CLI todo app, Python,
+      JSON-file storage, pytest"), and confirm: the requirements phase
+      runs and gates (`awaiting_review`, notification arrives),
+      `devteam_approve` advances to architecture, the architecture gate
+      shows a milestone plan in `devteam_result`, and after approval the
+      scaffold/milestone phases advance on their own. Also exercise
+      `devteam_revise` once at a gate, and an intentionally vague plan
+      ("build something for my shop") to see `awaiting_input` →
+      `devteam_answer` resume.
+- [ ] Engagements are long unattended model time: stop `trellis` first
+      (same 35b RAM gotcha as §5h debates), and expect hours wall-clock
+      for a real plan.
+
 ## 6. Write notifications (recommended)
 
 - [ ] In n8n, create a workflow: **Webhook** node (POST, path e.g.
       `mcp-notify`) → **Send Email** (or ntfy/Telegram/etc.) using fields
       from the JSON body (`event`, `domain`, `tool`, `summary`, `changes`,
-      `approvals_url`). Activate it.
+      `approvals_url`). Activate it. Devteam engagements (§5j) send
+      `devteam.needs_input` (with a `questions` list), `devteam.milestone`
+      (informational or gated — the `status` field distinguishes),
+      `devteam.stuck`, and `devteam.completed` events through the same
+      webhook (`SMOLAGENTS_NOTIFY_WEBHOOK` side, plus `devteam.completed`
+      from mcp-tools on a final approval) — the default workflow works
+      as-is; add per-event routing (e.g. push for `devteam.needs_input`,
+      email digest for milestones) if the volume warrants it.
 - [ ] Put the production webhook URL in `mcp-tools/.env`:
       `APPROVAL_NOTIFY_WEBHOOK=http://host.docker.internal:5678/webhook/mcp-notify`,
       then `cd mcp-tools && docker compose -p mcp-tools up -d`.

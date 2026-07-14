@@ -168,6 +168,32 @@ system" bullet below.
   deliverable; rounds are the working record. Turn orchestration can also
   consult the `researcher` agent (at most once, before the persona) for a
   sourced brief.
+- **Devteam engagements are a fourth parallel queue**: `smolagents/data/
+  smolagents/devteam`, bind-mounted into mcp-tools as `/agent-devteam`
+  (same ownership split — mcp-tools' `devteam_start` creates
+  `session.json` + queued phase jobs, and performs exactly five
+  user-driven transitions: `devteam_answer`, `devteam_approve`,
+  `devteam_revise`, `devteam_resume`, `devteam_cancel`; the worker,
+  `agents/jobs.py`'s `_advance_devteam`, owns everything else, including
+  auto-queuing the next phase past an UNGATED completion, debate-style).
+  A phase run IS an ordinary job (tagged `job["devteam"]`) executed by
+  the lead architect (`agents/devteam/`, a manager-shaped CodeAgent with
+  its own specialist team, never registered on the general manager) via
+  the shared segment/synopsis loop (`_run_report_segments`). The
+  deliberate inversion vs. debates: phases whose kind/name is in the
+  session's `gates` list (default: requirements, architecture, docs)
+  PARK as `awaiting_review` — only a human-driven mcp-tools call queues
+  what runs next; `needs_clarification` parks as `awaiting_input` and
+  resumes via `devteam_answer` with the answers injected — this is the
+  one queue where "the team cannot ask questions mid-run" does NOT
+  apply. Phase workspaces are per-PHASE
+  (`devteam/<id>/phases/<NN>-<name>/workspace/`), not per-job, so
+  synopsis working memory survives revision/answer re-runs. The
+  architecture phase's milestone plan is parsed by deterministic worker
+  code (`_extract_milestones`) — missing/malformed → session `stuck`,
+  never repaired by code or guessed. Webhook events: `devteam.needs_input`
+  (carries `questions`), `devteam.milestone`, `devteam.stuck`,
+  `devteam.completed`.
 
 ## Dependencies on makerops-core (sibling checkout `../makerops-core`)
 

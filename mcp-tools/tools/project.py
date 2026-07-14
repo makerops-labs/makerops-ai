@@ -98,6 +98,12 @@ def _get_project(project: str) -> dict | None:
     return _load_registry().get(project)
 
 
+def get_project(project: str) -> dict | None:
+    """Public registry lookup for other domains — devteam_domain validates
+    that a project is registered before starting an engagement there."""
+    return _get_project(project)
+
+
 # ── Path resolution ─────────────────────────────────────────────────────────
 # Two deliberately different scopes: reads are broad (anywhere under the
 # ~/workspace mount, no registration needed — prior-art browsing is the

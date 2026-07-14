@@ -173,3 +173,33 @@ LIAISON_MAX_STEPS = int(os.environ.get("SMOLAGENTS_LIAISON_MAX_STEPS", "6"))
 # silently reinjecting days-old context into a "new" conversation the user
 # no longer remembers starting.
 LIAISON_SESSION_STALE_HOURS = float(os.environ.get("SMOLAGENTS_LIAISON_SESSION_STALE_HOURS", "6"))
+
+# Devteam engagements: a lead-architect orchestrator plus a specialist
+# software team (agents/devteam/) builds an application in a registered
+# ~/workspace/<project> directory from a user-provided product plan, as a
+# durable multi-phase engagement (requirements → architecture → scaffold →
+# milestones → qa → docs). A fourth parallel queue sharing the job-record
+# mechanism (job["devteam"], see jobs.py) with its own session store here —
+# same ownership split as the debate/liaison stores.
+DEVTEAM_DIR = os.path.join(DATA_DIR, "devteam")
+
+# The lead architect is a manager-shaped orchestrator, so it gets the
+# manager's proven step budget; long phases continue via segments like any
+# manager job. Empty model = the resident general lead (orchestration is
+# planning, and staying on the resident model means delegating to the
+# general-model specialists costs no VRAM swap).
+DEVTEAM_ARCHITECT_MODEL_ID = os.environ.get("SMOLAGENTS_DEVTEAM_ARCHITECT_MODEL_ID", "")
+DEVTEAM_ARCHITECT_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEVTEAM_ARCHITECT_MAX_STEPS", "32"))
+
+# Engineer specialists get headroom above the default specialist budget
+# (12): an engineer sub-task is write-then-verify — code via project_*
+# tools plus a real project_run_command test/lint run before reporting —
+# which is more round-trips than a one-shot specialist task, but still one
+# sub-task, not an expedition (the architect splits bigger work).
+DEVTEAM_ENGINEER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEVTEAM_ENGINEER_MAX_STEPS", "16"))
+
+# Cap on implementation milestones the architecture phase may plan. Each
+# milestone is a whole phase job (up to DEVTEAM_ARCHITECT_MAX_STEPS ×
+# MAX_SEGMENTS of model time), so this bounds how much unattended work a
+# single architecture sign-off can authorize.
+DEVTEAM_MAX_MILESTONES = int(os.environ.get("SMOLAGENTS_DEVTEAM_MAX_MILESTONES", "6"))

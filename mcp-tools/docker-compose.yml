@@ -46,6 +46,13 @@ services:
       # pointers once the turn runs — same split as the job/debate queues
       # above. One JSON file per Alexa userId.
       - ${SMOLAGENTS_LIAISON_PATH:-../smolagents/data/smolagents/liaison}:/agent-liaison
+      # Shared devteam engagement store: devteam_start writes session.json +
+      # the requirements phase's queued job record here, and the five
+      # user-driven transitions (answer/approve/revise/resume/cancel) queue
+      # follow-on phase jobs; the smolagents job worker owns every other
+      # transition, including auto-advancing past ungated phases — same
+      # split as the job/debate/liaison queues above.
+      - ${SMOLAGENTS_DEVTEAM_PATH:-../smolagents/data/smolagents/devteam}:/agent-devteam
       # Self-improvement loop: propose_code_change reads/diffs any file in
       # the repo (gating on human approval is the safety boundary, not a
       # path allowlist — see docs/ai-setup-checklist.md). The actual write
