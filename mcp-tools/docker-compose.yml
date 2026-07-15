@@ -53,6 +53,13 @@ services:
       # transition, including auto-advancing past ungated phases — same
       # split as the job/debate/liaison queues above.
       - ${SMOLAGENTS_DEVTEAM_PATH:-../smolagents/data/smolagents/devteam}:/agent-devteam
+      # Shared hardware engagement store: hardware_start writes session.json
+      # + the requirements phase's queued job record here, and the five
+      # user-driven transitions (answer/approve/revise/resume/cancel) queue
+      # follow-on phase jobs; the smolagents job worker owns every other
+      # transition, including auto-advancing past ungated phases — same
+      # split as the job/debate/liaison/devteam queues above.
+      - ${SMOLAGENTS_HARDWARE_PATH:-../smolagents/data/smolagents/hardware}:/agent-hardware
       # Self-improvement loop: propose_code_change reads/diffs any file in
       # the repo (gating on human approval is the safety boundary, not a
       # path allowlist — see docs/ai-setup-checklist.md). The actual write

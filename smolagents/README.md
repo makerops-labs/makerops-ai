@@ -31,6 +31,25 @@ resumes with the user's answers). See the root [README.md](../README.md)
 for the controls; models/step budgets are env-tunable
 (`SMOLAGENTS_DEVTEAM_*`, see `.env.example`).
 
+A third, separate team lives in `agents/hardware/`: an **embedded
+architect** (manager-shaped orchestrator, general lead) managing
+`kicad_specialist` (coding-adjacent lead, pinned to `qwen3-coder:30b`),
+plus fresh instances of `auditor` and `researcher`. Same shape as devteam —
+never registered on the general manager, run by the job worker for
+**hardware engagement** phases (requirements → architecture → per-block
+milestones → fab-review → docs) — but a forked, parallel implementation
+rather than a shared one (see `agents/jobs.py`'s hardware section for why).
+An engagement designs a circuit in a registered project workspace from a
+desired hardware outcome, with the same sign-off gates and mid-run
+question mechanics as devteam, plus one gate devteam has no analog for:
+`fab-review`, gated in every preset except `none` since it precedes the
+real, costly step of sending a design to a manufacturer. **No real KiCad
+tooling exists yet** — every phase's deliverables are documents (an
+Embedded Design Brief, then per-block KiCad Build Plans), never real
+schematic/PCB files; see the mcp-tools `hardware` domain for the controls
+and `docs/hardware-agents-guide.md` for the full roadmap. Models/step
+budgets are env-tunable (`SMOLAGENTS_HARDWARE_*`, see `.env.example`).
+
 - **Docs:** <https://huggingface.co/docs/smolagents>
 - **GitHub:** <https://github.com/huggingface/smolagents>
 
@@ -189,6 +208,13 @@ Agents load their tools from the shared MCP tool server
   the point (see "Project workspaces" below). It also uses
   `project_run_command` to actually run a project's tests/linter/build
   rather than assume they pass.
+- **embedded_architect** (in `agents/hardware/`) uses `project`, `inventree`
+  (read-only stock-check tools only), and `web` — checking local parts
+  stock before speccing new components and doing quick research directly,
+  while deeper datasheet/part comparisons still go to its own `researcher`
+  sub-agent. **kicad_specialist** uses only the `project` domain this
+  phase — no `kicad` mcp-tools domain exists yet (a future build phase); it
+  reads the architect's design briefs and writes its own KiCad build plans.
 
 ### Orchestration (manager procedure)
 

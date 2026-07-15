@@ -329,6 +329,60 @@ recovers with `devteam_resume`, or `devteam_cancel` ends the engagement
 a machine-parseable milestone plan is parked `stuck` too — the plan is
 validated by deterministic worker code, never guessed.
 
+### Hardware engagements (design a circuit from a desired outcome)
+
+The same engagement mechanism as devteam above, applied to circuit design:
+an **embedded architect** agent orchestrating a **KiCad build-plan
+specialist** (`smolagents/agents/hardware/`) designs a circuit in a
+registered project directory from a desired hardware outcome you provide,
+phase by phase: requirements → architecture (with a per-block milestone
+plan, one block per functional area — power, MCU, sensing, radio, etc.) →
+per-block implementation milestones → fab-review → docs. Each phase runs
+as one background job through the same segment/synopsis machinery as any
+long manager job; the engagement's durable state machine lives in
+`smolagents/data/smolagents/hardware/<id>/session.json` (a fifth parallel
+queue beside jobs/debates/liaison/devteam, same mcp-tools bind-mount
+ownership split). This is a deliberately forked, parallel implementation
+of the devteam mechanism, not a shared one — see
+`smolagents/agents/jobs.py`'s hardware section for why forking (rather
+than generalizing devteam itself) was the right call for this pass.
+
+**No real KiCad tooling exists yet.** Every phase's deliverables are
+documents, not real schematic/PCB files: the architecture phase produces
+an Embedded Design Brief (architecture overview, power budget with the
+arithmetic shown, a candidate BOM stock-checked against the `inventree`
+domain, interface/pinout intent), and each milestone phase produces the
+matching slice of a KiCad Build Plan (sheet plan, net list, footprint
+assignments, DRC/ERC expectations) whose "Planned Manufacturing Outputs"
+section is explicitly marked intent-only. See
+[docs/hardware-agents-guide.md](docs/hardware-agents-guide.md) for the
+full roadmap toward real `kicad-cli` execution, code-first generation
+tooling, and a KiCad-desktop IPC-API integration.
+
+It shares devteam's two distinguishing mechanics — the engagement can ask
+you questions mid-run (`awaiting_input`, webhook `hardware.needs_input`,
+resume via `hardware_answer`), and you sign off like a client at gated
+phases (`awaiting_review`, `hardware_approve`/`hardware_revise`) while
+everything between gates auto-advances — plus one hardware-specific
+addition: **`fab-review` is gated in every preset except `none`**,
+regardless of how much autonomy you chose elsewhere, because it precedes
+the real, hard-to-reverse cost of sending a design to a manufacturer.
+Physical prototype test results feed back into the design the same way —
+`hardware_revise` on the fab-review phase with what you found.
+
+Start one from the **Hardware Builder** chat preset
+([openwebui/contexts/hardware-builder.md](openwebui/contexts/hardware-builder.md))
+— it interviews you into a concrete desired outcome, registers the
+project, calls `hardware_start`, relays questions, and records your
+verdicts. Track with `hardware_status` / `hardware_result` or the inbox's
+engagement cards; a crashed or failed phase parks as `stuck` (webhook
+`hardware.stuck`) and recovers with `hardware_resume`, or `hardware_cancel`
+ends the engagement (project files always remain). An architecture phase
+that fails to produce a machine-parseable milestone plan is parked `stuck`
+too, same as devteam. For quick ad hoc questions outside a formal
+engagement, the lightweight **KiCad Specialist** preset talks directly to
+the specialist's persona with no engagement machinery attached.
+
 ### Startup order
 
 Ollama first (in makerops-core, with the models from the hierarchy table

@@ -38,6 +38,7 @@ _jobs_dir = Path(config.JOBS_DIR)
 _debates_dir = Path(config.DEBATES_DIR)
 _liaison_dir = Path(config.LIAISON_DIR)
 _devteam_dir = Path(config.DEVTEAM_DIR)
+_hardware_dir = Path(config.HARDWARE_DIR)
 
 
 def _now() -> str:
@@ -1078,17 +1079,21 @@ def _notify_devteam(event: str, session: dict, summary: str = "",
 _MILESTONE_SLUG_RE = re.compile(r"[^a-z0-9]+")
 
 
-def _extract_milestones(report: dict) -> list[dict] | None:
+def _extract_milestones(report: dict, max_milestones: int) -> list[dict] | None:
     """Deterministically validate the architecture report's milestone plan.
     Returns normalized phase entries, or None when the list is missing or
     malformed — the caller marks the session stuck rather than guessing
     (an invalid plan must go back to the architect, never be repaired by
-    code)."""
+    code). Shared by devteam (max_milestones=config.DEVTEAM_MAX_MILESTONES)
+    and the hardware engagement (config.HARDWARE_MAX_MILESTONES) — the only
+    piece of either engagement's advancement logic genuinely generic enough
+    to share rather than fork; see the hardware section below for why the
+    rest is a parallel implementation, not a shared one."""
     raw = report.get("milestones")
     if not isinstance(raw, list) or not raw:
         return None
     entries = []
-    for i, m in enumerate(raw[:config.DEVTEAM_MAX_MILESTONES]):
+    for i, m in enumerate(raw[:max_milestones]):
         if not isinstance(m, dict):
             return None
         name = str(m.get("name", "")).strip().lower()
@@ -1308,7 +1313,7 @@ def _advance_devteam(job: dict, report: dict) -> None:
                 {"phase": phase_index, "note": str(note)[:300], "ts": _now()})
 
     if phase["kind"] == "architecture":
-        milestones = _extract_milestones(report)
+        milestones = _extract_milestones(report, config.DEVTEAM_MAX_MILESTONES)
         if milestones is None:
             phase["status"] = "stuck"
             session["status"] = "stuck"
@@ -1383,14 +1388,411 @@ def _mark_devteam_stuck(job: dict, report: dict) -> None:
                     summary=report.get("summary", "") or job.get("error", ""))
 
 
+# ── Hardware engagement phases ───────────────────────────────────────────────
+# A fifth parallel queue, structurally identical to devteam above (a phase
+# run IS an ordinary job, tagged job["hardware"]) with its own durable
+# session store under _hardware_dir/<id>/: session.json (the phase state
+# machine), product_brief.md (the client's full desired-outcome text, kept
+# out of session.json), reports/phase-NN-<name>-r<rev>.json (every phase
+# landing, the audit trail), and phases/<NN>-<name>/workspace/ (per-PHASE
+# synopsis working memory). Ownership split mirrors devteam: mcp-tools
+# (tools/hardware_store.py) creates sessions + queued jobs and performs
+# exactly the five user-driven transitions (answer, approve, revise,
+# resume, cancel); this worker owns everything else — INCLUDING
+# auto-queuing the next phase past an ungated completion. Gate transitions
+# are the deliberate inversion, same as devteam: at a gated phase the
+# worker parks the session (awaiting_review / awaiting_input) and
+# notifies; only a human-driven mcp-tools call queues what runs next. The
+# embedded architect itself has no dispatch tools, same reasoning as the
+# manager and the devteam lead architect.
+#
+# This is a deliberately forked copy of the devteam block above, not a
+# shared implementation (beyond _extract_milestones, which was generic
+# enough to parameterize and share) — the session/job-shape functions below
+# are devteam-shaped enough that a genuine shared "engagement engine"
+# refactor is real future work, not this pass. Forking is the
+# lower-regression-risk choice for a production system devteam already
+# runs on; if both engagement types are still healthy after real use,
+# revisit consolidating them (same "evidence before abstraction" reasoning
+# the guidance library applies elsewhere).
+
+def _hardware_session_path(session_id: str) -> Path:
+    return _hardware_dir / session_id / "session.json"
+
+
+def _load_hardware_session(session_id: str) -> dict | None:
+    return _load(_hardware_session_path(session_id))
+
+
+def _save_hardware_session(session: dict) -> None:
+    session["updated_at"] = _now()
+    path = _hardware_session_path(session["id"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(session, indent=1, ensure_ascii=False))
+    os.replace(tmp, path)
+
+
+def _hardware_phase_workspace(session_id: str, phase_index: int,
+                              phase_name: str) -> Path:
+    return (_hardware_dir / session_id / "phases"
+            / f"{phase_index:02d}-{phase_name}" / "workspace")
+
+
+def _new_hardware_job(session: dict, phase_index: int, reason: str) -> dict:
+    phase = session["phases"][phase_index]
+    return {
+        "id": f"job-{int(time.time())}-{uuid.uuid4().hex[:6]}",
+        "status": "queued",
+        "source": "hardware",
+        "created_at": _now(),
+        "started_at": None,
+        "finished_at": None,
+        "heartbeat_ts": 0,
+        "parent_job_id": None,
+        "segments": 1,
+        "brief": {"objective": (f"Hardware engagement {session['id']} phase "
+                                f"{phase_index} '{phase['name']}' ({reason}) "
+                                f"— project '{session.get('project', '')}'"),
+                  "deliverables": (phase.get("deliverables_spec")
+                                   or [f"{phase.get('kind', '')} phase "
+                                       "deliverables"]),
+                  "project": session.get("project", "")},
+        "report": None,
+        "error": None,
+        "log_tail": "",
+        "hardware": {"session_id": session["id"], "phase_index": phase_index,
+                    "phase_name": phase["name"], "reason": reason},
+    }
+
+
+def _queue_hardware_phase(session: dict, phase_index: int, reason: str) -> None:
+    """Queue one phase job and point the session at it. Worker-side callers
+    only (ungated auto-advance); the five user-driven transitions queue via
+    mcp-tools' hardware_store mirror of this."""
+    job = _new_hardware_job(session, phase_index, reason)
+    phase = session["phases"][phase_index]
+    phase["status"] = "running"
+    phase.setdefault("job_ids", []).append(job["id"])
+    session["status"] = "running"
+    session["current_phase"] = phase_index
+    session["queued_job_id"] = job["id"]
+    session["open_questions"] = []
+    session["next_expected"] = {"phase_index": phase_index, "reason": reason}
+    _save_hardware_session(session)
+    _save(job)  # picked up by the SAME poll loop within _POLL_S
+
+
+def _notify_hardware(event: str, session: dict, summary: str = "",
+                     questions: list | None = None) -> None:
+    """Fire-and-forget webhook for engagement-level events, mirroring
+    _notify_devteam. hardware.needs_input carries the questions themselves
+    so the n8n fan-out (email/push) can show the client what is being
+    asked without a round-trip to the inbox."""
+    if not config.NOTIFY_WEBHOOK:
+        return
+    phases = session.get("phases", [])
+    current = session.get("current_phase", 0)
+    phase_name = (phases[current]["name"]
+                  if 0 <= current < len(phases) else "")
+    payload = {"event": event, "engagement_id": session["id"],
+               "project": session.get("project", ""),
+               "phase": phase_name,
+               "phase_progress": f"{sum(1 for p in phases if p.get('status') in ('approved', 'done'))}/{len(phases)}",
+               "status": session.get("status"),
+               "stop_reason": session.get("stop_reason") or "",
+               "questions": questions or [],
+               "summary": summary[:500],
+               "inbox_url": f"{config.MCP_TOOLS_PUBLIC_URL}/inbox"}
+    try:
+        httpx.post(config.NOTIFY_WEBHOOK, json=payload, timeout=10)
+    except httpx.HTTPError as exc:
+        print(f"[jobs] hardware notify webhook failed for {session['id']}: {exc}")
+
+
+def _insert_hw_milestone_phases(session: dict, milestones: list[dict]) -> None:
+    """Replace any previously planned milestone phases (an architecture
+    revision re-plans them — none can have started, the architecture gate
+    precedes them) and insert the new ones before the fab-review phase."""
+    phases = [p for p in session["phases"] if p.get("kind") != "milestone"]
+    insert_at = next((i for i, p in enumerate(phases)
+                      if p.get("kind") == "fab-review"), len(phases))
+    session["phases"] = (phases[:insert_at] + milestones + phases[insert_at:])
+
+
+def _write_hardware_phase_report(session: dict, phase_index: int, phase: dict,
+                                 report: dict) -> None:
+    """Full report of every phase landing, for the inbox card, the
+    hardware_result tool, and the audit trail. Re-runs of the same revision
+    (answer resumes) overwrite — latest landing wins."""
+    reports_dir = _hardware_dir / session["id"] / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    path = (reports_dir / f"phase-{phase_index:02d}-{phase['name']}"
+                          f"-r{phase.get('revisions', 0)}.json")
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(report, indent=1, ensure_ascii=False))
+    os.replace(tmp, path)
+
+
+def _format_hardware_task(job: dict, workspace: Path) -> str:
+    """One phase's task text for the embedded architect: the phase mandate
+    pointer, the product brief (inline early, by project-docs pointer
+    later), bounded prior-phase summaries + the decisions log (flat context
+    regardless of engagement length), and the reason-specific block —
+    client answers verbatim, revision feedback, or an interruption note."""
+    hardware = job["hardware"]
+    session = _load_hardware_session(hardware["session_id"])
+    if session is None:
+        # Guarded before the run in _run_job; belt and suspenders.
+        return ""
+    phase_index = hardware["phase_index"]
+    phase = session["phases"][phase_index]
+    reason = hardware.get("reason", "start")
+    project = session.get("project", "")
+    lines = [
+        f"HARDWARE ENGAGEMENT {session['id']} — phase {phase_index} "
+        f"'{phase['name']}' (kind: {phase['kind']}), "
+        f"segment {job.get('segments', 1)}.",
+        f"Project: '{project}' — a registered durable directory under "
+        f"~/workspace/. Work ONLY this phase; your PHASE MANDATES section "
+        f"says what a '{phase['kind']}' phase must produce.",
+    ]
+    if phase["kind"] == "milestone":
+        lines.append(f"Milestone objective: {phase.get('objective', '')}")
+        if phase.get("deliverables_spec"):
+            lines.append("Milestone deliverables: "
+                         + "; ".join(phase["deliverables_spec"]))
+    if session.get("constraints"):
+        lines.append("Engagement constraints: "
+                     + "; ".join(session["constraints"]))
+    if session.get("context"):
+        lines.append(f"Context from the client:\n{session['context']}")
+
+    if phase["kind"] in ("requirements", "architecture"):
+        try:
+            brief_text = (_hardware_dir / session["id"]
+                         / "product_brief.md").read_text()
+            lines.append("--- Desired outcome (from the client) ---\n"
+                         + brief_text)
+        except OSError:
+            lines.append("The engagement's product_brief.md is missing — "
+                         "report needs_attention immediately instead of "
+                         "working without it.")
+    else:
+        lines.append("The requirements and architecture from earlier "
+                     "phases live in the project's docs/ — read what this "
+                     "phase needs (docs/REQUIREMENTS.md, "
+                     "docs/ARCHITECTURE.md), plus any build plans already "
+                     "written under build-plans/.")
+
+    prior = [(i, p) for i, p in enumerate(session["phases"])
+             if i < phase_index and p.get("summary")]
+    if prior:
+        lines.append("--- Prior phases (already done — build on them) ---")
+        lines += [f"[{p['name']}] {p['summary']}" for _, p in prior]
+    if session.get("decisions"):
+        lines.append("--- Decisions log (settled with the client; never "
+                     "revisit or re-ask) ---")
+        lines += [f"- {d.get('note', '')}" for d in session["decisions"]]
+
+    if reason == "answers" and session.get("answers"):
+        last = session["answers"][-1]
+        lines.append("--- CLIENT ANSWERS — this phase previously paused "
+                     "with questions; these settle them. Resolve and "
+                     "proceed; do NOT re-ask. ---")
+        lines += [f"Q: {q}" for q in last.get("questions", [])]
+        lines.append(f"A: {last.get('answers', '')}")
+    elif reason == "revision" and session.get("feedback"):
+        last = session["feedback"][-1]
+        lines.append("--- REVISION REQUESTED — the client reviewed this "
+                     "phase's previous result and wants changes. Re-read "
+                     "what already exists before rewriting; address "
+                     "exactly this: ---\n" + str(last.get("feedback", "")))
+    elif reason == "resume":
+        lines.append("A previous run of this phase was interrupted (worker "
+                     "restart or failure). Re-verify what already exists — "
+                     "in the project and in your workspace below — before "
+                     "redoing any work.")
+
+    lines.append(
+        f"Your working-memory workspace directory is {workspace} (create "
+        "files with pathlib). Keep synopsis.md there current per your "
+        "WORKING MEMORY procedure — it persists across this phase's "
+        "segments AND across revision/answer re-runs of this same phase. "
+        "It is your own scratch memory; PROJECT_CONTEXT.md is the durable "
+        "project record.")
+    lines.append(
+        "FIRST apply your VALIDATE step (questions pause the engagement "
+        "politely — ask early, batched, rather than guessing), then ORIENT "
+        f"via project_read_file('{project}', 'PROJECT_CONTEXT.md'). Always "
+        "finish with build_hardware_phase_report(...) and "
+        "final_answer(report) in the SAME code block — no hand-written "
+        "dict literals, no other text.")
+
+    synopsis = workspace / "synopsis.md"
+    if synopsis.is_file():
+        listing = ", ".join(sorted(
+            str(p.relative_to(workspace))
+            for p in workspace.rglob("*") if p.is_file())) or "(empty)"
+        lines.append(
+            "A previous segment or run already worked this phase. Resume "
+            f"from its synopsis below; workspace files: {listing}\n\n"
+            "--- synopsis.md ---\n" + synopsis.read_text())
+    return "\n".join(lines)
+
+
+_HARDWARE_SALVAGE_TASK = (
+    "Your previous answer was not the required report dict. The work you "
+    "already did above still counts — do not redo it. In ONE code block: "
+    "call build_hardware_phase_report(...) describing that work (put any "
+    "text deliverables you produced into a "
+    'build_deliverable(type="text", title=..., location="<the full '
+    'text>")), then actually call final_answer(report). Nothing else — no '
+    "hand-written dict literals.")
+
+
+def _advance_hardware(job: dict, report: dict) -> None:
+    """Deterministic engagement advancement, run after a hardware phase job
+    lands its terminal report (see _run_job). Every path either parks the
+    session for the user (awaiting_review / awaiting_input / stuck) with a
+    webhook, or — for an ungated completed phase — auto-queues the next
+    phase, the devteam-advance pattern. No LLM decides any of this."""
+    hardware = job["hardware"]
+    session = _load_hardware_session(hardware["session_id"])
+    if session is None:
+        print(f"[jobs] hardware {hardware['session_id']}: session.json "
+              f"missing — cannot advance phase {hardware['phase_index']}")
+        return
+    phase_index = hardware["phase_index"]
+    if not 0 <= phase_index < len(session["phases"]):
+        print(f"[jobs] hardware {session['id']}: job {job['id']} names "
+              f"phase {phase_index} outside the plan — ignoring")
+        return
+    phase = session["phases"][phase_index]
+    session["current_phase"] = phase_index
+    session["current_job_id"] = job["id"]
+    session["queued_job_id"] = None
+    _write_hardware_phase_report(session, phase_index, phase, report)
+
+    if session.get("status") == "cancelled":
+        # Let the landing be recorded, but a cancelled engagement never
+        # advances or re-parks — the user's cancel wins.
+        _save_hardware_session(session)
+        return
+
+    status = report.get("status")
+    if status == "needs_clarification":
+        questions = [str(q) for q in (report.get("questions") or []) if q]
+        if not questions:
+            questions = ["(the architect paused for clarification but "
+                         f"listed no questions — see job {job['id']})"]
+        session["open_questions"] = questions
+        session["status"] = "awaiting_input"
+        phase["status"] = "awaiting_input"
+        session["next_expected"] = {"phase_index": phase_index,
+                                    "reason": "answers"}
+        _save_hardware_session(session)
+        _notify_hardware("hardware.needs_input", session,
+                        summary=report.get("summary", ""),
+                        questions=questions)
+        return
+
+    if status != "completed":
+        _mark_hardware_stuck(job, report)
+        return
+
+    phase["summary"] = str(report.get("summary", ""))[:1000]
+    phase["deliverables"] = report.get("deliverables") or []
+    for note in report.get("decisions") or []:
+        if str(note).strip():
+            session.setdefault("decisions", []).append(
+                {"phase": phase_index, "note": str(note)[:300], "ts": _now()})
+
+    if phase["kind"] == "architecture":
+        milestones = _extract_milestones(report, config.HARDWARE_MAX_MILESTONES)
+        if milestones is None:
+            phase["status"] = "stuck"
+            session["status"] = "stuck"
+            session["stop_reason"] = (
+                "architecture phase completed WITHOUT a valid milestones "
+                "list (report must carry milestones=[{name, objective, "
+                "deliverables}, ...]) — hardware_resume re-runs the phase, "
+                "or hardware_cancel to give up. See job " + job["id"] + ".")
+            session["next_expected"] = {"phase_index": phase_index,
+                                        "reason": "resume"}
+            _save_hardware_session(session)
+            _notify_hardware("hardware.stuck", session,
+                            summary=report.get("summary", ""))
+            return
+        _insert_hw_milestone_phases(session, milestones)
+        phase = session["phases"][phase_index]  # list rebuilt above
+
+    gates = session.get("gates", [])
+    gated = phase.get("kind") in gates or phase.get("name") in gates
+    is_last = phase_index == len(session["phases"]) - 1
+    summary = report.get("summary", "")
+
+    if gated:
+        phase["status"] = "awaiting_review"
+        session["status"] = "awaiting_review"
+        session["next_expected"] = {"phase_index": phase_index,
+                                    "reason": "review"}
+        _save_hardware_session(session)
+        _notify_hardware("hardware.milestone", session, summary=summary)
+        return
+
+    phase["status"] = "done"
+    if is_last:
+        session["status"] = "concluded"
+        session["stop_reason"] = "all phases completed"
+        _save_hardware_session(session)
+        _notify_hardware("hardware.completed", session, summary=summary)
+        return
+    # Informational milestone note, then straight on to the next phase —
+    # the client asked for autonomy between sign-offs.
+    _notify_hardware("hardware.milestone", session, summary=summary)
+    _queue_hardware_phase(session, phase_index + 1, "start")
+
+
+def _mark_hardware_stuck(job: dict, report: dict) -> None:
+    """Any non-completed terminal landing, or a worker restart mid-phase
+    (_recover_stale), parks the engagement for a human instead of silently
+    stalling — hardware_resume re-queues the interrupted phase."""
+    hardware = job.get("hardware")
+    if not hardware:
+        return
+    session = _load_hardware_session(hardware["session_id"])
+    if session is None:
+        return
+    if session.get("status") in ("cancelled", "concluded"):
+        return
+    phase_index = hardware["phase_index"]
+    if 0 <= phase_index < len(session["phases"]):
+        session["phases"][phase_index]["status"] = "stuck"
+    session["status"] = "stuck"
+    session["stop_reason"] = (
+        f"phase {phase_index} ({hardware.get('phase_name', '?')}) ended "
+        f"'{report.get('status', 'failed')}' — see job {job['id']}. "
+        "hardware_resume re-runs the phase once fixed, or hardware_cancel "
+        "to give up.")
+    session["current_job_id"] = job["id"]
+    session["queued_job_id"] = None
+    session["next_expected"] = {"phase_index": phase_index,
+                                "reason": "resume"}
+    _save_hardware_session(session)
+    _notify_hardware("hardware.stuck", session,
+                    summary=report.get("summary", "") or job.get("error", ""))
+
+
 def _run_report_segments(agent, job: dict, workspace: Path, format_task,
                          salvage_task: str = _SALVAGE_TASK) -> dict | None:
-    """The manager-style segment loop shared by ordinary manager jobs and
-    devteam phase jobs: run the agent, convert step exhaustion into a
-    deterministic continuation (or needs_attention) report, honor
-    "continuation" up to the segment cap, then land the terminal report in
-    the job record and fire the per-job webhook. Returns the terminal
-    report, or None when the run raised (the record already holds
+    """The manager-style segment loop shared by ordinary manager jobs,
+    devteam phase jobs, and hardware phase jobs: run the agent, convert
+    step exhaustion into a deterministic continuation (or needs_attention)
+    report, honor "continuation" up to the segment cap, then land the
+    terminal report in the job record and fire the per-job webhook.
+    Returns the terminal report, or None when the run raised (the record
+    already holds
     status=failed and the failure webhook already fired)."""
     while True:
         task = format_task(job, workspace)
@@ -1449,6 +1851,7 @@ def _run_job(agents: dict, job: dict) -> None:
     is_debate = bool(job.get("debate"))
     is_liaison = bool(job.get("liaison"))
     is_devteam = bool(job.get("devteam"))
+    is_hardware = bool(job.get("hardware"))
     if is_debate:
         persona = job["debate"].get("persona", "")
         agent = agents["debate_personas"].get(persona)
@@ -1469,6 +1872,14 @@ def _run_job(agents: dict, job: dict) -> None:
             _save(job)
             _notify("job.failed", job)
             return
+    elif is_hardware:
+        agent = agents["embedded_architect"]
+        if _load_hardware_session(job["hardware"]["session_id"]) is None:
+            job.update(status="failed", finished_at=_now(),
+                       error="hardware session record not found")
+            _save(job)
+            _notify("job.failed", job)
+            return
     else:
         agent = agents["manager"]
     if is_devteam:
@@ -1479,6 +1890,11 @@ def _run_job(agents: dict, job: dict) -> None:
         workspace = _devteam_phase_workspace(
             devteam["session_id"], devteam["phase_index"],
             devteam["phase_name"])
+    elif is_hardware:
+        hardware = job["hardware"]
+        workspace = _hardware_phase_workspace(
+            hardware["session_id"], hardware["phase_index"],
+            hardware["phase_name"])
     else:
         workspace = _jobs_dir / job["id"] / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
@@ -1529,17 +1945,26 @@ def _run_job(agents: dict, job: dict) -> None:
         else:
             _advance_devteam(job, report)
         return
+    if is_hardware:
+        report = _run_report_segments(agent, job, workspace,
+                                      _format_hardware_task,
+                                      _HARDWARE_SALVAGE_TASK)
+        if report is None:
+            _mark_hardware_stuck(job, {"status": "failed"})
+        else:
+            _advance_hardware(job, report)
+        return
 
     _run_report_segments(agent, job, workspace, _format_task)
 
 
 def _recover_stale() -> None:
     """A record stuck in 'running' means the container died mid-job. For a
-    debate turn or a devteam phase, this also halts auto-advancement
-    (session status -> stuck) rather than leaving the session silently
-    waiting on a run that will never finish — the ordinary job queue has no
-    such follow-on step to get stuck, so this only matters for the
-    session-backed queues."""
+    debate turn, a devteam phase, or a hardware phase, this also halts
+    auto-advancement (session status -> stuck) rather than leaving the
+    session silently waiting on a run that will never finish — the ordinary
+    job queue has no such follow-on step to get stuck, so this only
+    matters for the session-backed queues."""
     for path in _jobs_dir.glob("job-*.json"):
         job = _load(path)
         if job and job.get("status") == "running":
@@ -1551,6 +1976,8 @@ def _recover_stale() -> None:
                 _mark_debate_stuck(job, {"status": "failed"})
             if job.get("devteam"):
                 _mark_devteam_stuck(job, {"status": "failed"})
+            if job.get("hardware"):
+                _mark_hardware_stuck(job, {"status": "failed"})
 
 
 def _persona_model_id(name: str) -> str:
@@ -1566,16 +1993,19 @@ def _worker_loop() -> None:
     from .debate import (PERSONA_SYSTEM_PROMPTS, build_critic_agent,
                          build_entrepreneur_agent, build_monitor_agent)
     from .devteam import build_lead_architect_agent
+    from .hardware import build_embedded_architect_agent
     from .manager import build_manager_agent
 
     _jobs_dir.mkdir(parents=True, exist_ok=True)
     _debates_dir.mkdir(parents=True, exist_ok=True)
     _liaison_dir.mkdir(parents=True, exist_ok=True)
     _devteam_dir.mkdir(parents=True, exist_ok=True)
+    _hardware_dir.mkdir(parents=True, exist_ok=True)
     _recover_stale()
     manager = build_manager_agent()  # built once; reused with reset=True
     alexa_liaison = build_alexa_liaison_agent()  # same, for liaison turns
     lead_architect = build_lead_architect_agent()  # same, for devteam phases
+    embedded_architect = build_embedded_architect_agent()  # same, for hardware phases
     # Debate personas are run DIRECTLY by _run_debate_turn — no orchestrator
     # LLM sits between the worker and a persona (see that function's
     # docstring for the failed-relay history). A persona in
@@ -1592,7 +2022,8 @@ def _worker_loop() -> None:
         for name, build in builders.items()}
     agents = {"manager": manager, "debate_personas": debate_personas,
               "alexa_liaison": alexa_liaison,
-              "lead_architect": lead_architect}
+              "lead_architect": lead_architect,
+              "embedded_architect": embedded_architect}
     _write_roster(manager)
     print(f"[jobs] worker ready — polling {_jobs_dir} every {_POLL_S}s")
     while True:

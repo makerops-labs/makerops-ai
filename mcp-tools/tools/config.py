@@ -97,6 +97,15 @@ AGENT_LIAISON_DIR = Path(_env("AGENT_LIAISON_DIR", "/agent-liaison"))
 # tools/devteam_domain.py and tools/devteam_store.py.
 AGENT_DEVTEAM_DIR = Path(_env("AGENT_DEVTEAM_DIR", "/agent-devteam"))
 
+# Shared hardware engagement store (smolagents/data/smolagents/hardware
+# bind-mounted rw) for hardware_start / status / answer / approve / revise /
+# resume / cancel. A fifth, parallel queue alongside the four above — see
+# tools/hardware_domain.py and tools/hardware_store.py. Structurally a
+# forked copy of the devteam queue (embedded_architect + kicad_specialist
+# instead of the lead architect + software team), not a shared
+# implementation.
+AGENT_HARDWARE_DIR = Path(_env("AGENT_HARDWARE_DIR", "/agent-hardware"))
+
 # Debate round-count defaults/ceiling — mode-dependent default, caller
 # overridable up to the hard ceiling (see debate_start).
 DEBATE_MAX_ROUNDS_NARROW = int(_env("DEBATE_MAX_ROUNDS_NARROW", "6"))

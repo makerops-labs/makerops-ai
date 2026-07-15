@@ -194,6 +194,30 @@ system" bullet below.
   never repaired by code or guessed. Webhook events: `devteam.needs_input`
   (carries `questions`), `devteam.milestone`, `devteam.stuck`,
   `devteam.completed`.
+- **Hardware engagements are a fifth parallel queue**, structurally
+  forked from devteam above rather than sharing its code (only
+  `_extract_milestones` was generic enough to parameterize and share —
+  see `agents/jobs.py`'s hardware section for why forking, not
+  generalizing, was the deliberate call): `smolagents/data/
+  smolagents/hardware`, bind-mounted into mcp-tools as `/agent-hardware`.
+  `embedded_architect` (never registered on the general manager, built
+  once in `_worker_loop`) orchestrates `kicad_specialist` — pinned to
+  `qwen3-coder:30b` via `HARDWARE_SPECIALIST_MODEL_ID`, a deliberate
+  deviation from every other `*_MODEL_ID`'s empty-default-falls-back-to-
+  lead convention — through requirements → architecture (emits a
+  milestone plan, one per functional block, validated by the same
+  `_extract_milestones`) → per-block milestone phases → **fab-review** →
+  docs. `fab-review` has no devteam analog: it is gated in every gate
+  preset except `none`, unconditionally, because it precedes the real,
+  hard-to-reverse cost of sending a design to a manufacturer — unlike a
+  milestone gate, nothing overrides it. No real KiCad tooling exists yet:
+  every phase's deliverables are documents (an Embedded Design Brief, then
+  per-block KiCad Build Plans), and a build plan's manufacturing-outputs
+  section is explicitly intent-only. See `docs/hardware-agents-guide.md`
+  (user-facing guide + deferred-tooling roadmap) and
+  `docs/guidance/hardware-design-handoff.md` (document schemas + handoff
+  discipline). Webhook events: `hardware.needs_input`,
+  `hardware.milestone`, `hardware.stuck`, `hardware.completed`.
 
 ## Dependencies on makerops-core (sibling checkout `../makerops-core`)
 

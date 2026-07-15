@@ -30,6 +30,7 @@ be) applied in this repo. Humans are welcome too.
 | [pddl-instruct-source.md](pddl-instruct-source.md) | Reference distillation of PDDL-Instruct (arXiv:2509.13351): logical CoT + external verification for planning. |
 | [seal-source.md](seal-source.md) | Reference distillation of SEAL (arXiv:2506.10943): self-generated training data judged by downstream reward. |
 | [thought-generation-source.md](thought-generation-source.md) | Reference distillation of Thinking LLMs / TPO (arXiv:2410.10630): pre-response thought generation, response-only judging. |
+| [hardware-design-handoff.md](hardware-design-handoff.md) | Fixed-schema Embedded Design Brief → KiCad Build Plan handoff between judgment (architect) and rigor (specialist) hardware-design roles; fab-review gates unconditionally. |
 
 ## Convention for adding a new distillation
 

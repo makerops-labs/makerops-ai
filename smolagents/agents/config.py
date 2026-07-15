@@ -203,3 +203,45 @@ DEVTEAM_ENGINEER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEVTEAM_ENGINEER_MAX
 # MAX_SEGMENTS of model time), so this bounds how much unattended work a
 # single architecture sign-off can authorize.
 DEVTEAM_MAX_MILESTONES = int(os.environ.get("SMOLAGENTS_DEVTEAM_MAX_MILESTONES", "6"))
+
+# Hardware engagements: an embedded_architect orchestrator plus a
+# kicad_specialist builds a circuit design in a registered
+# ~/workspace/<project> directory from a desired hardware outcome, as a
+# durable multi-phase engagement (requirements → architecture → per-block
+# milestones → fab-review → docs), same mechanism as devteam
+# (agents/hardware/, jobs.py's hardware section, the mcp-tools `hardware`
+# domain) — a parallel, forked implementation rather than a shared one; see
+# jobs.py's hardware block comment for why forking (not refactoring devteam
+# itself) was the deliberate choice for this pass.
+HARDWARE_DIR = os.path.join(DATA_DIR, "hardware")
+
+# The embedded architect is a manager-shaped orchestrator like the devteam
+# lead architect, so it gets the same orchestration-scale step budget; long
+# phases continue via segments like any manager job. Empty model = the
+# resident general lead (orchestration is planning, and staying on the
+# resident model means delegating to kicad_specialist/researcher/auditor
+# costs no VRAM swap for the architect's own turn).
+HARDWARE_ARCHITECT_MODEL_ID = os.environ.get("SMOLAGENTS_HARDWARE_ARCHITECT_MODEL_ID", "")
+HARDWARE_ARCHITECT_MAX_STEPS = int(os.environ.get("SMOLAGENTS_HARDWARE_ARCHITECT_MAX_STEPS", "32"))
+
+# kicad_specialist gets headroom above the default specialist budget (12),
+# matching the devteam engineer budget: a milestone or fab-review sub-task
+# is read-the-brief-then-write-the-build-plan, more round-trips than a
+# one-shot specialist task but still one sub-task, not an expedition.
+HARDWARE_SPECIALIST_MAX_STEPS = int(os.environ.get("SMOLAGENTS_HARDWARE_SPECIALIST_MAX_STEPS", "16"))
+# Deliberate deviation from this file's usual empty-default-falls-back-to-
+# lead convention (every other *_MODEL_ID above defaults to ""): pinned to
+# qwen3-coder:30b, NOT this stack's actual coding lead (qwen3.6:35b — see
+# CODING_MODEL_ID). kicad_specialist's job — translating a design brief
+# into structured sheet/net/footprint tables — is closer to
+# qwen3-coder:30b's code/structure-precise strength than to open-ended
+# judgment, at the cost of a third distinct VRAM-swap category beyond the
+# two resident leads. Do not "fix" this back to empty to match the
+# convention above; that would undo a deliberate model choice.
+HARDWARE_SPECIALIST_MODEL_ID = os.environ.get("SMOLAGENTS_HARDWARE_SPECIALIST_MODEL_ID", "qwen3-coder:30b")
+
+# Cap on per-block milestones the architecture phase may plan (one per
+# functional block — power, MCU, sensing, radio, etc.), same reasoning as
+# DEVTEAM_MAX_MILESTONES: each is a whole phase job, so this bounds how much
+# unattended kicad_specialist work a single architecture sign-off authorizes.
+HARDWARE_MAX_MILESTONES = int(os.environ.get("SMOLAGENTS_HARDWARE_MAX_MILESTONES", "6"))

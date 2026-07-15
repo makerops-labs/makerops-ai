@@ -59,6 +59,8 @@ tuning you do in the UI.
 | [Studio](studio.md) | qwen3.5:9b | comfyui, drawio |
 | [Code Auditor](code-auditor.md) | gpt-oss:20b | web (optional) |
 | [General Auditor](general-auditor.md) | gemma4:12b | web (optional) |
+| [Hardware Builder](hardware-builder.md) | qwen3.6:35b-64k | hardware, project |
+| [KiCad Specialist](kicad-specialist.md) | qwen3-coder:30b | project |
 
 ### Baseline tool-environment block
 
@@ -84,6 +86,43 @@ project), ops ≈ Ops Assistant, coder ≈ Coding Assistant,
 writer ≈ Knowledge Curator, studio ≈ Studio. For the narrower ones (Inventory Manager), scaffold an
 equivalent agent with `agent_create` if you want it in the agent workspace
 too.
+
+embedded_architect ≈ Hardware Builder (same Embedded Design Brief format
+both sides; both write briefs and build plans into the registered
+project) and kicad_specialist ≈ KiCad Specialist — except Hardware Builder
+is the engagement front door (carries the `hardware` domain, drives a full
+requirements→architecture→milestones→fab-review→docs engagement) while the
+smolagents-side `kicad_specialist` only runs inside that engagement as
+embedded_architect's managed sub-agent; the standalone KiCad Specialist
+preset is a lighter, engagement-independent chat echo of its persona for
+ad hoc questions, not a live connection to the same running agent.
+
+### Starting a hardware engagement
+
+**Hardware Builder** is the front door to the hardware engagement system:
+an embedded-architect agent plus a KiCad build-plan specialist
+(smolagents' `agents/hardware/`) that design a circuit in a registered
+`~/workspace/<project>` directory from a desired outcome, phase by phase
+(requirements → architecture → per-block milestones → fab-review → docs),
+each phase a background job — structurally the same engagement mechanism
+as devteam (see "Starting a devteam engagement" below), forked rather than
+shared (see `agents/jobs.py`'s hardware section). Advancement is
+user-gated at the configured sign-offs (default: requirements,
+architecture, fab-review, final delivery — fab-review is gated in every
+preset except `none`, since it precedes the real, costly step of sending
+a design to a manufacturer) and fully autonomous between them; the
+engagement pauses as `awaiting_input` whenever the architect has
+questions and resumes with `hardware_answer`. The Hardware Builder preset
+refines the desired outcome, registers the project, starts the
+engagement, relays questions, and records the user's approve/revise
+verdicts; it deliberately does NOT carry the `agents` domain, and Task
+Dispatcher/App Builder deliberately do not carry `hardware` — engagement
+semantics (answer/approve on a parked session) and plain-job semantics
+(`parent_job_id` re-dispatch) confuse a single preset. **No real KiCad
+tooling exists yet**: every phase produces documents (design briefs, build
+plans), and the fab-review phase's manufacturing-output section stays
+explicitly intent-only until a future build phase adds real `kicad-cli`
+execution.
 
 ### Dispatching to agents
 
