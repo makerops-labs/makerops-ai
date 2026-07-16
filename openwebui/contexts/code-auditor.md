@@ -3,8 +3,10 @@
 Independent second opinion on code produced by another model (usually the
 coding lead, `qwen3.6:35b`). Uses `gpt-oss:20b` because its different
 lineage (OpenAI vs Qwen) decorrelates blind spots; for a same-lineage
-specialist pass, create a second copy of this preset on `qwen3-coder:30b`.
-See the model hierarchy table in [README.md](../../README.md).
+specialist pass, create a second copy of this preset on `qwen3.6:27b`
+(dense — actually out-benchmarks the lead on SWE-bench, but too slow on
+this hardware to lead; excellent as a reviewer). See the model hierarchy
+table in [README.md](../../README.md).
 
 - **Base model:** `gpt-oss:20b`
 - **Tool connections:** `http://host.docker.internal:8099/mcp/web/` (optional,

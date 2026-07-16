@@ -26,10 +26,13 @@ across projects.
 ## Model hierarchy (canonical table in README.md)
 
 Lead-per-domain: best benchmark performer that fits the hardware leads;
-same-expertise lower-benchmark models (plus cross-lineage `gpt-oss:20b`)
-review to catch blind spots. Currently: `qwen3.6:35b` coding,
-`qwen3.6:35b-64k` general/agents AND default chat/dispatch (one resident
-model; the trellis stop-first RAM gotcha now applies to agent jobs too),
+same-expertise models (plus cross-lineage `gpt-oss:20b`) review to catch
+blind spots. Currently: `qwen3.6:35b` coding, `qwen3.6:35b-64k`
+general/agents AND default chat/dispatch (one resident model; the trellis
+stop-first RAM gotcha now applies to agent jobs too), `qwen3.6:27b`
+hardware/KiCad specialist + coding reviewer (dense; out-benchmarks the
+35b coding lead 77.2 vs 73.4 SWE-bench Verified but measured ~14 tok/s
+generation / ~62 tok/s prefill here — too slow to lead agentic loops),
 `qwen3.5:9b` vision + light presets (former general lead, now also a
 general reviewer), `qwen3-embedding:0.6b` RAG. Switch leads on benchmark evidence
 (no local A/B gate); old lead becomes a reviewer. On a switch update:
@@ -202,7 +205,7 @@ system" bullet below.
   smolagents/hardware`, bind-mounted into mcp-tools as `/agent-hardware`.
   `embedded_architect` (never registered on the general manager, built
   once in `_worker_loop`) orchestrates `kicad_specialist` — pinned to
-  `qwen3-coder:30b` via `HARDWARE_SPECIALIST_MODEL_ID`, a deliberate
+  `qwen3.6:27b` via `HARDWARE_SPECIALIST_MODEL_ID`, a deliberate
   deviation from every other `*_MODEL_ID`'s empty-default-falls-back-to-
   lead convention — through requirements → architecture (emits a
   milestone plan, one per functional block, validated by the same
@@ -235,7 +238,7 @@ system" bullet below.
 ## Hardware envelope
 
 RTX 4070 Ti SUPER 16 GB VRAM; WSL2 capped at 24 GB RAM (`.wslconfig`).
-Models >16 GB (both coding models) partially offload to RAM — if a load is
+Models >16 GB (`qwen3.6:35b*` and `qwen3.6:27b`) partially offload to RAM — if a load is
 OOM-killed (`signal: killed` during tensor load), free RAM or raise the cap.
 Speech stays CPU-only to protect VRAM. Flash attention is on in Ollama.
 TRELLIS wants most of the 16 GB during a generation — run it while the LLMs

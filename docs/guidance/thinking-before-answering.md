@@ -70,8 +70,9 @@ evaluate), which is the transferable inference-time piece adopted here.
   scratchpad can never poison the next round.
 - `openwebui/contexts/` — researcher, investment-strategist, code-auditor,
   general-auditor, debate-moderator presets carry the chat-side adaptation
-  (general-auditor uses a visible two-part output: gemma4:12b has no hidden
-  thinking channel).
+  (general-auditor uses a visible two-part output — originally because its
+  then-base gemma4:12b, retired 2026-07, had no hidden thinking channel;
+  kept on gpt-oss:20b for the auditable trail).
 - NOT applied (deliberately): task-dispatcher, research-assistant and other
   9b presets, manager (`planning_interval` + `_PROCEDURE` is its thinking
   mechanism), coder/coding-assistant, alexa_liaison.

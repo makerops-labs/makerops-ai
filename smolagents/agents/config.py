@@ -19,16 +19,19 @@ def _model_list(env_var: str, default: str) -> list[str]:
             if m.strip()]
 
 
-# Reviewer pools for the audit agent: same-expertise models that sit below
-# the lead on benchmarks, used to catch the lead model's blind spots.
-# gpt-oss is a different lineage (OpenAI vs Qwen/Gemma), which decorrelates
-# the review. See the model hierarchy table in README.md.
+# Reviewer pools for the audit agent: same-expertise models used to catch
+# the lead model's blind spots. gpt-oss is a different lineage (OpenAI vs
+# Qwen), which decorrelates the review. See the model hierarchy table in
+# README.md. qwen3.6:27b actually out-benchmarks the 35b coding lead
+# (77.2 vs 73.4 SWE-bench Verified) but is dense — ~14 tok/s generation and
+# ~62 tok/s prefill on this hardware (measured 2026-07-16) — too slow to
+# lead agentic loops, so it reviews instead.
 CODING_REVIEW_MODEL_IDS = _model_list("SMOLAGENTS_CODING_REVIEW_MODEL_IDS",
-                                      "qwen3-coder:30b,gpt-oss:20b")
+                                      "qwen3.6:27b,gpt-oss:20b")
 # qwen3.5:9b is the former general lead, kept as a reviewer per the
 # lead-switch convention (old lead becomes a reviewer).
 GENERAL_REVIEW_MODEL_IDS = _model_list("SMOLAGENTS_GENERAL_REVIEW_MODEL_IDS",
-                                       "qwen3.5:9b,gemma4:12b,gpt-oss:20b")
+                                       "qwen3.5:9b,gpt-oss:20b")
 
 DATA_DIR = os.environ.get("SMOLAGENTS_DATA_DIR", "./data")
 MAX_STEPS = int(os.environ.get("SMOLAGENTS_MAX_STEPS", "12"))
@@ -230,15 +233,15 @@ HARDWARE_ARCHITECT_MAX_STEPS = int(os.environ.get("SMOLAGENTS_HARDWARE_ARCHITECT
 # one-shot specialist task but still one sub-task, not an expedition.
 HARDWARE_SPECIALIST_MAX_STEPS = int(os.environ.get("SMOLAGENTS_HARDWARE_SPECIALIST_MAX_STEPS", "16"))
 # Deliberate deviation from this file's usual empty-default-falls-back-to-
-# lead convention (every other *_MODEL_ID above defaults to ""): pinned to
-# qwen3-coder:30b, NOT this stack's actual coding lead (qwen3.6:35b — see
-# CODING_MODEL_ID). kicad_specialist's job — translating a design brief
-# into structured sheet/net/footprint tables — is closer to
-# qwen3-coder:30b's code/structure-precise strength than to open-ended
-# judgment, at the cost of a third distinct VRAM-swap category beyond the
-# two resident leads. Do not "fix" this back to empty to match the
-# convention above; that would undo a deliberate model choice.
-HARDWARE_SPECIALIST_MODEL_ID = os.environ.get("SMOLAGENTS_HARDWARE_SPECIALIST_MODEL_ID", "qwen3-coder:30b")
+# lead convention (every other *_MODEL_ID above defaults to ""): pinned
+# explicitly rather than following the coding lead. kicad_specialist's job —
+# translating a design brief into structured sheet/net/footprint tables —
+# wants dense structure-precision, which qwen3.6:27b (dense; took this role
+# over from qwen3-coder:30b, retired 2026-07) delivers best in the stack.
+# Keeping the pin explicit preserves that choice even if the coding lead
+# changes. Do not "fix" this back to empty to match the convention above;
+# that would undo a deliberate model choice.
+HARDWARE_SPECIALIST_MODEL_ID = os.environ.get("SMOLAGENTS_HARDWARE_SPECIALIST_MODEL_ID", "qwen3.6:27b")
 
 # Cap on per-block milestones the architecture phase may plan (one per
 # functional block — power, MCU, sensing, radio, etc.), same reasoning as

@@ -24,9 +24,9 @@ phase is independently useful, so you can stop at any point and come back.
   # num_ctx 32000 instead.
   printf 'FROM qwen3.6:35b\nPARAMETER num_ctx 64000\n' | \
     docker exec -i ollama sh -c 'cat > /tmp/Modelfile && ollama create qwen3.6:35b-64k -f /tmp/Modelfile'
-  # Reviewer pool (multi-model audit)
-  docker exec ollama ollama pull qwen3-coder:30b      # ~19 GB
-  docker exec ollama ollama pull gemma4:12b           # ~7.6 GB
+  # Hardware specialist / coding reviewer (dense, structure-precise)
+  docker exec ollama ollama pull qwen3.6:27b          # ~17 GB
+  # Cross-lineage reviewer / debate critic (multi-model audit)
   docker exec ollama ollama pull gpt-oss:20b          # ~13 GB
   # Embeddings for Open WebUI RAG
   docker exec ollama ollama pull qwen3-embedding:0.6b
@@ -144,7 +144,7 @@ domain should appear in `domains`).
       `docker compose -p smolagents restart` to activate it.
 - [ ] Test the auditor: "Ask auditor to review this code" with a small
       snippet — it should consult the coding reviewer pool
-      (`qwen3-coder:30b`, `gpt-oss:20b`; models swap in VRAM, so this takes
+      (`qwen3.6:27b`, `gpt-oss:20b`; models swap in VRAM, so this takes
       a few minutes) and return one merged findings report.
 
 ## 5b. Speech (voice in Open WebUI)

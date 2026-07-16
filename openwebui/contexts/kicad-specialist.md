@@ -16,7 +16,7 @@ knowledge and whatever design documents you show it or that already live
 in a registered project; it cannot run ERC/DRC, generate gerbers, or open
 a KiCad file itself.
 
-- **Base model:** `qwen3-coder:30b`
+- **Base model:** `qwen3.6:27b`
 - **Tool connections:** `http://host.docker.internal:8099/mcp/project/`
 
 ## System prompt

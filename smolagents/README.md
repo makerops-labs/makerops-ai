@@ -33,7 +33,7 @@ for the controls; models/step budgets are env-tunable
 
 A third, separate team lives in `agents/hardware/`: an **embedded
 architect** (manager-shaped orchestrator, general lead) managing
-`kicad_specialist` (coding-adjacent lead, pinned to `qwen3-coder:30b`),
+`kicad_specialist` (coding-adjacent lead, pinned to `qwen3.6:27b`),
 plus fresh instances of `auditor` and `researcher`. Same shape as devteam —
 never registered on the general manager, run by the job worker for
 **hardware engagement** phases (requirements → architecture → per-block
@@ -73,9 +73,8 @@ docker exec ollama ollama pull qwen3.6:35b       # coding + general lead base (~
 # context is too small):
 printf 'FROM qwen3.6:35b\nPARAMETER num_ctx 64000\n' | docker exec -i ollama sh -c 'cat > /tmp/Modelfile && ollama create qwen3.6:35b-64k -f /tmp/Modelfile'
 docker exec ollama ollama pull qwen3.5:9b        # vision lead / light presets (~6.6 GB)
-# Reviewer pool for the auditor:
-docker exec ollama ollama pull qwen3-coder:30b   # ~19 GB
-docker exec ollama ollama pull gemma4:12b        # ~7.6 GB
+# Hardware specialist + coding reviewer (dense) and cross-lineage reviewer:
+docker exec ollama ollama pull qwen3.6:27b       # ~17 GB
 docker exec ollama ollama pull gpt-oss:20b       # ~13 GB
 ```
 

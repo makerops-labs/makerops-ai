@@ -58,9 +58,9 @@ tuning you do in the UI.
 | [Coding Assistant](coding-assistant.md) | qwen3.6:35b | web |
 | [Studio](studio.md) | qwen3.5:9b | comfyui, drawio |
 | [Code Auditor](code-auditor.md) | gpt-oss:20b | web (optional) |
-| [General Auditor](general-auditor.md) | gemma4:12b | web (optional) |
+| [General Auditor](general-auditor.md) | gpt-oss:20b | web (optional) |
 | [Hardware Builder](hardware-builder.md) | qwen3.6:35b-64k | hardware, project |
-| [KiCad Specialist](kicad-specialist.md) | qwen3-coder:30b | project |
+| [KiCad Specialist](kicad-specialist.md) | qwen3.6:27b | project |
 
 ### Baseline tool-environment block
 

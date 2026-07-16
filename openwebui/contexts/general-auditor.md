@@ -1,19 +1,23 @@
 # General Auditor
 
 Independent second opinion on plans, documents, and analysis produced by
-another model (usually the general lead, `qwen3.5:9b`). Uses `gemma4:12b`
-(Google lineage) as the same-expertise reviewer; for a cross-lineage pass,
-create a second copy of this preset on `gpt-oss:20b`. See the model
-hierarchy table in [README.md](../../README.md).
+another model (usually the general lead). Uses `gpt-oss:20b` (OpenAI
+lineage) as the cross-lineage reviewer to decorrelate blind spots; for a
+same-expertise pass, create a second copy of this preset on `qwen3.5:9b`
+(the former general lead, kept as a reviewer). See the model hierarchy
+table in [README.md](../../README.md).
 
-- **Base model:** `gemma4:12b`
+- **Base model:** `gpt-oss:20b`
 - **Tool connections:** `http://host.docker.internal:8099/mcp/web/` (optional,
   for fact-checking claims)
 
 > **Why this preset shows its thinking**: the other thought-scaffolded
 > presets keep the draft-and-evaluate pass in the model's hidden reasoning
-> channel; `gemma4:12b` has none, so this preset uses the visible two-part
-> output (Thought process / Findings) from the TPO paper instead — see
+> channel. This preset instead uses the visible two-part output (Thought
+> process / Findings) from the TPO paper — originally a workaround for
+> `gemma4:12b`'s missing reasoning channel (retired 2026-07), kept on
+> `gpt-oss:20b` because an auditable draft-and-test trail suits a reviewer
+> and survives base-model swaps — see
 > `docs/guidance/thinking-before-answering.md`. Read the Findings section;
 > the thought process is skippable working material.
 

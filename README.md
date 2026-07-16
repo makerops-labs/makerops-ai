@@ -117,9 +117,10 @@ share training blind spots.
 
 | Domain | Lead | Reviewers |
 | --- | --- | --- |
-| Coding | `qwen3.6:35b` (73.4% SWE-bench Verified) | `qwen3-coder:30b`, `gpt-oss:20b` |
+| Coding | `qwen3.6:35b` (73.4% SWE-bench Verified) | `qwen3.6:27b`, `gpt-oss:20b` |
+| KiCad build-plans (hardware specialist) | `qwen3.6:27b` (dense, structure-precise; 77.2% SWE-bench Verified but ~14 tok/s here — reviewer/specialist, not lead) | — |
 | Default chat / task dispatch | `qwen3.6:35b-64k` (derivative, checklist §1) | — |
-| General / agents / planning | `qwen3.6:35b-64k` (same derivative — one resident general model for chat and agents) | `qwen3.5:9b`, `gemma4:12b`, `gpt-oss:20b` |
+| General / agents / planning | `qwen3.6:35b-64k` (same derivative — one resident general model for chat and agents) | `qwen3.5:9b`, `gpt-oss:20b` |
 | Vision understanding | `qwen3.5:9b` / `qwen3.6:35b` (both natively multimodal) | — |
 | Image generation | FLUX.1 (ComfyUI, in makerops-core) | — |
 | Image-to-3D | `TRELLIS-image-large` 1.2B (trellis service, GPU on-demand) | — |
