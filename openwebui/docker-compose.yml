@@ -19,6 +19,11 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     env_file: .env
+    environment:
+      # Containers default to UTC, which made {{CURRENT_DATETIME}} in preset
+      # system prompts report tomorrow's date every evening (host is
+      # America/Chicago).
+      TZ: "${TZ:-America/Chicago}"
     volumes:
       - ${OPENWEBUI_DATA_PATH:-./data/openwebui}:/app/backend/data
     ports:

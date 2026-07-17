@@ -44,23 +44,32 @@ tuning you do in the UI.
 
 ## Presets
 
+**Every preset carries the `web` domain** (2026-07-16): the baseline block
+now instructs every assistant to verify time-sensitive claims with
+web_search/fetch_url and cite source URLs, so every workspace model needs
+the `mcp-web` connection attached — the table lists it explicitly. Every
+domain endpoint also carries a `current_datetime` tool (alongside
+`tools_help`), so any connected chat can check the clock mid-conversation.
+
 | Context | Base model | Tool domains |
 | --- | --- | --- |
 | [Task Dispatcher](task-dispatcher.md) | qwen3.6:35b-64k | agents, approvals, web, outline |
-| [App Builder](app-builder.md) | qwen3.6:35b-64k | devteam, project |
+| [App Builder](app-builder.md) | qwen3.6:35b-64k | devteam, project, web |
 | [Debate Moderator](debate-moderator.md) | qwen3.6:35b-64k | debate, web |
 | [Researcher](researcher.md) | qwen3.6:35b-64k | web |
 | [Investment Strategist](investment-strategist.md) | qwen3.6:35b-64k | web, project |
 | [Research Assistant](research-assistant.md) | qwen3.5:9b | web |
-| [Ops Assistant](ops-assistant.md) | qwen3.5:9b | outline, inventree, plane, n8n, freescout, triggerdev, approvals |
+| [Ops Assistant](ops-assistant.md) | qwen3.5:9b | outline, inventree, plane, n8n, freescout, triggerdev, approvals, web |
 | [Knowledge Curator](knowledge-curator.md) | qwen3.5:9b | outline, web, approvals |
-| [Inventory Manager](inventory-manager.md) | qwen3.5:9b | inventree, approvals |
+| [Inventory Manager](inventory-manager.md) | qwen3.5:9b | inventree, approvals, web |
 | [Coding Assistant](coding-assistant.md) | qwen3.6:35b | web |
-| [Studio](studio.md) | qwen3.5:9b | comfyui, drawio |
-| [Code Auditor](code-auditor.md) | gpt-oss:20b | web (optional) |
-| [General Auditor](general-auditor.md) | gpt-oss:20b | web (optional) |
-| [Hardware Builder](hardware-builder.md) | qwen3.6:35b-64k | hardware, project |
-| [KiCad Specialist](kicad-specialist.md) | qwen3.6:27b | project |
+| [Studio](studio.md) | qwen3.5:9b | comfyui, drawio, web |
+| [Code Auditor](code-auditor.md) | gpt-oss:20b | web |
+| [General Auditor](general-auditor.md) | gpt-oss:20b | web |
+| [Hardware Builder](hardware-builder.md) | qwen3.6:35b-64k | hardware, project, web |
+| [KiCad Specialist](kicad-specialist.md) | qwen3.6:27b | project, web |
+| [Marketing Guru](marketing-guru.md) | qwen3.6:35b-64k | web, outline, agents |
+| [Business Strategist](business-strategist.md) | qwen3.6:35b-64k | web, outline, agents |
 
 ### Baseline tool-environment block
 

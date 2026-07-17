@@ -12,6 +12,7 @@ VRAM swap (override with SMOLAGENTS_RESEARCHER_MODEL_ID).
 from smolagents import ToolCallingAgent, VisitWebpageTool, WebSearchTool
 
 from . import config
+from .citations import check_citations_fetched
 from .context import with_baseline
 from .model import get_model
 from .thoughts import THINK_FIRST
@@ -48,7 +49,14 @@ _RESEARCHER_SYSTEM = (
     "report the conflict as its own finding instead of silently picking a "
     "side. If the tools are down or the question is unanswerable from "
     "public sources, say exactly that in the brief — never fabricate a "
-    "source or a number. Depth belongs in your exploration, not your "
+    "source or a number. CITATIONS ARE ENFORCED BY CODE, not trust: a "
+    "deterministic check rejects any brief citing a URL you did not "
+    "successfully open with fetch_url during this run — search snippets "
+    "are not enough, and links written from memory never pass. So fetch "
+    "every page you intend to cite before writing the brief; if a page "
+    "will not load or does not actually support the claim, cite a source "
+    "that does or move the claim to Confidence & gaps as unverified. "
+    "Depth belongs in your exploration, not your "
     "output: keep the whole brief under ~500 words; you are feeding "
     "someone else's bounded context, not writing a survey paper. The "
     "entire answer must be the plain-markdown brief above — no code, "
@@ -76,4 +84,8 @@ def build_researcher_agent() -> ToolCallingAgent:
         ),
         instructions=with_baseline(_RESEARCHER_SYSTEM),
         max_steps=config.RESEARCHER_MAX_STEPS,
+        # Reject briefs citing URLs the agent never successfully fetched
+        # this run — dead links and invented sources both fail closed
+        # (bad links + fabricated citations reached the user, 2026-07-16).
+        final_answer_checks=[check_citations_fetched],
     )

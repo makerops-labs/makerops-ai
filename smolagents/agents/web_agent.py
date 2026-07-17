@@ -11,6 +11,7 @@ tools (x is never part of that fallback — no free equivalent exists).
 from smolagents import ToolCallingAgent, VisitWebpageTool, WebSearchTool
 
 from . import config
+from .citations import check_citations_observed
 from .context import with_baseline
 from .model import get_model
 from .tools import get_domains_tools
@@ -35,6 +36,12 @@ def build_web_agent() -> ToolCallingAgent:
             "caller's bounded context, and bloating it degrades every "
             "later step of the whole job. Extract what matters, cite the "
             "URL, move on. "
+            "CITATIONS ARE ENFORCED BY CODE: a deterministic check "
+            "rejects any answer citing a URL that did not appear in your "
+            "search results or fetched pages this run — a link written "
+            "from memory never passes. Copy cited URLs exactly as your "
+            "tools returned them; if you cannot source a claim, say so "
+            "instead of inventing a link. "
             "x_search_recent (X/Twitter, last 7 days only) COSTS REAL "
             "MONEY per call (~$0.005-0.01/read, no free tier) — use it "
             "only when specifically asked to check X/Twitter, e.g. during "
@@ -50,4 +57,9 @@ def build_web_agent() -> ToolCallingAgent:
             "count."
         ),
         max_steps=config.MAX_STEPS,
+        # Reject answers citing URLs that never appeared in this run's
+        # tool results (fabricated links reached the user, 2026-07-16).
+        # The stricter fetched-URL gate stays on the deep researcher —
+        # this agent's 12-step budget can't afford a fetch per citation.
+        final_answer_checks=[check_citations_observed],
     )

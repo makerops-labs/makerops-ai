@@ -13,6 +13,25 @@ OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "ollama")
 CODING_MODEL_ID = os.environ.get("SMOLAGENTS_CODING_MODEL_ID", "qwen3.6:35b")
 GENERAL_MODEL_ID = os.environ.get("SMOLAGENTS_GENERAL_MODEL_ID", "qwen3.6:35b-64k")
 
+# Per-request ceiling on one model call. Generous on purpose: a 35b step at
+# ~30k tokens of context legitimately takes 15+ minutes on this hardware
+# (partial CPU offload). Without an explicit value, a wedged Ollama call
+# can hold a job "running" indefinitely — job-1784231534 sat silent for
+# 3h+ (2026-07-16) with the single-threaded worker blocked behind it. A
+# timeout converts that hang into a failed job → stuck session → the
+# normal resume path. MODEL_MAX_RETRIES stays low because a retried
+# timeout re-prefills the same huge context.
+MODEL_TIMEOUT_S = float(os.environ.get("SMOLAGENTS_MODEL_TIMEOUT_S", "1800"))
+MODEL_MAX_RETRIES = int(os.environ.get("SMOLAGENTS_MODEL_MAX_RETRIES", "1"))
+
+# A running job whose last step heartbeat is older than this triggers ONE
+# job.stalled webhook (per job) from the watchdog thread in jobs.py. The
+# watchdog never kills the job — Python threads can't be interrupted, and
+# the model timeout above already bounds a hung call; this is the early
+# human signal that the worker may be wedged (e.g. an MCP call hanging).
+JOB_STALL_NOTIFY_S = float(os.environ.get("SMOLAGENTS_JOB_STALL_NOTIFY_S",
+                                          "2700"))
+
 
 def _model_list(env_var: str, default: str) -> list[str]:
     return [m.strip() for m in os.environ.get(env_var, default).split(",")

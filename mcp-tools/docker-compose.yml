@@ -25,6 +25,10 @@ services:
       - 8.8.8.8
       - 1.1.1.1
     env_file: .env
+    environment:
+      # Containers default to UTC; current_time (and every timestamp shown
+      # to agents) should report the user's wall clock (America/Chicago).
+      TZ: "${TZ:-America/Chicago}"
     volumes:
       - ${MCPTOOLS_DATA_PATH:-./data/mcp-tools}:/data
       # agent_create scaffolds new smolagents agents into the repo working

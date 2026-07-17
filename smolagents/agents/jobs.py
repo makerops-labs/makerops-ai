@@ -28,6 +28,7 @@ from smolagents.utils import AgentMaxStepsError
 
 from . import config
 from .thoughts import strip_thoughts
+from .tools import get_domain_tools, reset_tools, tools_session_alive
 
 _POLL_S = 2.0
 _LOG_TAIL_CHARS = 2000
@@ -43,6 +44,16 @@ _hardware_dir = Path(config.HARDWARE_DIR)
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _with_current_date(task: str) -> str:
+    """Prefix a job task with the real current date — evaluated per segment,
+    so it stays right across multi-day queues and agent processes that were
+    built at startup. Raw personas (no tools) get their only clock from
+    this line; tool-calling agents get it without burning a step."""
+    stamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %z (%A)")
+    return (f"Current date & time: {stamp} — trust this over any date you "
+            f"would otherwise assume.\n\n{task}")
 
 
 def _job_path(job_id: str) -> Path:
@@ -723,7 +734,7 @@ def _run_debate_turn(agent, job: dict, workspace: Path) -> None:
         _mark_debate_stuck(job, report)
         return
 
-    task = _format_debate_task(job, workspace)
+    task = _with_current_date(_format_debate_task(job, workspace))
     is_raw = isinstance(agent, dict)
     try:
         if is_raw:
@@ -937,7 +948,7 @@ def _run_liaison_turn(agent, job: dict, workspace: Path) -> None:
     """A liaison turn is 'answer or delegate once, reply' — no continuation
     segments, and no auto-advance (see module section docstring above)."""
     user_id = job["liaison"]["user_id"]
-    task = _format_liaison_task(job, workspace)
+    task = _with_current_date(_format_liaison_task(job, workspace))
     try:
         answer = agent.run(task, reset=True,
                            additional_args={"workspace": str(workspace)})
@@ -1254,6 +1265,58 @@ _DEVTEAM_SALVAGE_TASK = (
     'text>")), then actually call final_answer(report). Nothing else — no '
     "hand-written dict literals.")
 
+# Phase kinds whose mandate names concrete project files; a "completed"
+# report for one of these must carry at least one file deliverable. qa
+# (devteam) and fab-review (hardware) verify/review existing work, so a
+# fileless completion can be legitimate there.
+_DEVTEAM_FILE_DELIVERABLE_KINDS = {"requirements", "architecture",
+                                   "scaffold", "milestone", "docs"}
+_HARDWARE_FILE_DELIVERABLE_KINDS = {"requirements", "architecture",
+                                    "milestone", "docs"}
+
+
+_SCRATCH_PREFIXES = tuple({"/data", str(config.DATA_DIR)})
+
+
+def _deliverable_pointer(deliverable) -> str | None:
+    """The deliverable's location when it reads as a POINTER to landed work
+    (a path or URL: single line, short) rather than inline document text.
+    Judged from the location alone, not the declared type — models mislabel
+    type= freely (devteam-demo's landed docs/REQUIREMENTS.md was reported
+    as type='text'; yield-logic's unlanded full documents were too)."""
+    if not isinstance(deliverable, dict):
+        return None
+    location = str(deliverable.get("location", "")).strip()
+    if location and "\n" not in location and len(location) <= 260:
+        return location
+    return None
+
+
+def _deliverables_landing_error(report: dict, phase_kind: str,
+                                required_kinds: set[str]) -> str | None:
+    """Deterministic backstop for the architects' rule 9b ('a phase's
+    deliverables live in the project, period'): a 'completed' report may
+    not point deliverables into the scratch workspace, and a phase whose
+    mandate names project files must carry at least one deliverable that
+    points at landed work (path/URL) instead of pasting document text
+    inline. Returns the violation text, or None when the report passes.
+    Prompt-level enforcement alone failed live (yield-logic, 2026-07-16):
+    with the project_* tools dead, phases reported 'completed' with /data
+    scratch paths and inline text standing in for project files, and the
+    gates showed 'done' with nothing on disk."""
+    pointers = [p for d in report.get("deliverables") or []
+                if (p := _deliverable_pointer(d)) is not None]
+    scratch = [p for p in pointers if p.startswith(_SCRATCH_PREFIXES)]
+    if scratch:
+        return ("deliverables point into the scratch workspace instead of "
+                "the project: " + "; ".join(scratch[:3]))
+    if phase_kind in required_kinds and not pointers:
+        return (f"a completed '{phase_kind}' phase must list at least one "
+                "deliverable at a project path (written via the project_* "
+                "tools), not inline document text — the report carries "
+                "none")
+    return None
+
 
 def _advance_devteam(job: dict, report: dict) -> None:
     """Deterministic engagement advancement, run after a devteam phase job
@@ -1311,6 +1374,25 @@ def _advance_devteam(job: dict, report: dict) -> None:
         if str(note).strip():
             session.setdefault("decisions", []).append(
                 {"phase": phase_index, "note": str(note)[:300], "ts": _now()})
+
+    landing_error = _deliverables_landing_error(
+        report, phase["kind"], _DEVTEAM_FILE_DELIVERABLE_KINDS)
+    if landing_error:
+        phase["status"] = "stuck"
+        session["status"] = "stuck"
+        session["stop_reason"] = (
+            f"phase {phase_index} ({phase['name']}) reported completed but "
+            f"its deliverables did not land: {landing_error}. This usually "
+            "means the project_* tools were failing during the run — check "
+            "mcp-tools, then devteam_resume re-runs the phase (its "
+            "workspace drafts survive), or devteam_cancel to give up. See "
+            "job " + job["id"] + ".")
+        session["next_expected"] = {"phase_index": phase_index,
+                                    "reason": "resume"}
+        _save_devteam_session(session)
+        _notify_devteam("devteam.stuck", session,
+                        summary=report.get("summary", ""))
+        return
 
     if phase["kind"] == "architecture":
         milestones = _extract_milestones(report, config.DEVTEAM_MAX_MILESTONES)
@@ -1708,6 +1790,25 @@ def _advance_hardware(job: dict, report: dict) -> None:
             session.setdefault("decisions", []).append(
                 {"phase": phase_index, "note": str(note)[:300], "ts": _now()})
 
+    landing_error = _deliverables_landing_error(
+        report, phase["kind"], _HARDWARE_FILE_DELIVERABLE_KINDS)
+    if landing_error:
+        phase["status"] = "stuck"
+        session["status"] = "stuck"
+        session["stop_reason"] = (
+            f"phase {phase_index} ({phase['name']}) reported completed but "
+            f"its deliverables did not land: {landing_error}. This usually "
+            "means the project_* tools were failing during the run — check "
+            "mcp-tools, then hardware_resume re-runs the phase (its "
+            "workspace drafts survive), or hardware_cancel to give up. See "
+            "job " + job["id"] + ".")
+        session["next_expected"] = {"phase_index": phase_index,
+                                    "reason": "resume"}
+        _save_hardware_session(session)
+        _notify_hardware("hardware.stuck", session,
+                         summary=report.get("summary", ""))
+        return
+
     if phase["kind"] == "architecture":
         milestones = _extract_milestones(report, config.HARDWARE_MAX_MILESTONES)
         if milestones is None:
@@ -1795,7 +1896,7 @@ def _run_report_segments(agent, job: dict, workspace: Path, format_task,
     already holds
     status=failed and the failure webhook already fired)."""
     while True:
-        task = format_task(job, workspace)
+        task = _with_current_date(format_task(job, workspace))
         segment_started = time.time()
         try:
             answer = agent.run(task, reset=True,
@@ -1987,21 +2088,21 @@ def _persona_model_id(name: str) -> str:
     return override or config.GENERAL_MODEL_ID
 
 
-def _worker_loop() -> None:
+def _build_agents() -> dict:
+    """The long-lived agent team, built on the CURRENT MCP tool sessions.
+    Called once at worker start and again whenever the pre-job liveness
+    check finds the sessions dead — the agents hold Tool objects bound to
+    tools.py's cached clients, so a reset_tools() always means a rebuild
+    here, never reuse."""
     # Deferred import: all of these need mcp-tools reachable for tool loading.
     from .alexa_liaison import build_alexa_liaison_agent
     from .debate import (PERSONA_SYSTEM_PROMPTS, build_critic_agent,
                          build_entrepreneur_agent, build_monitor_agent)
+    from .debate.format import RAW_MODE_NOTE
     from .devteam import build_lead_architect_agent
     from .hardware import build_embedded_architect_agent
     from .manager import build_manager_agent
 
-    _jobs_dir.mkdir(parents=True, exist_ok=True)
-    _debates_dir.mkdir(parents=True, exist_ok=True)
-    _liaison_dir.mkdir(parents=True, exist_ok=True)
-    _devteam_dir.mkdir(parents=True, exist_ok=True)
-    _hardware_dir.mkdir(parents=True, exist_ok=True)
-    _recover_stale()
     manager = build_manager_agent()  # built once; reused with reset=True
     alexa_liaison = build_alexa_liaison_agent()  # same, for liaison turns
     lead_architect = build_lead_architect_agent()  # same, for devteam phases
@@ -2014,32 +2115,120 @@ def _worker_loop() -> None:
     builders = {"entrepreneur": build_entrepreneur_agent,
                 "critic": build_critic_agent,
                 "monitor": build_monitor_agent}
-    from .debate.format import RAW_MODE_NOTE
     debate_personas = {
         name: ({"raw_system": PERSONA_SYSTEM_PROMPTS[name] + " " + RAW_MODE_NOTE,
                 "model_id": _persona_model_id(name)}
                if name in config.DEBATE_RAW_PERSONAS else build())
         for name, build in builders.items()}
-    agents = {"manager": manager, "debate_personas": debate_personas,
-              "alexa_liaison": alexa_liaison,
-              "lead_architect": lead_architect,
-              "embedded_architect": embedded_architect}
     _write_roster(manager)
+    return {"manager": manager, "debate_personas": debate_personas,
+            "alexa_liaison": alexa_liaison,
+            "lead_architect": lead_architect,
+            "embedded_architect": embedded_architect}
+
+
+def _fail_job_no_tools(job: dict) -> None:
+    """Park a queued job — and its session, for the session-backed queues —
+    when the MCP tool sessions are dead and cannot be rebuilt. Failing fast
+    with an explicit error beats running the job toolless: in the
+    2026-07-16 yield-logic engagements the architect improvised for hours
+    against dead project_* tools and reported phases 'completed' whose
+    files never landed."""
+    job.update(status="failed", finished_at=_now(),
+               error="mcp-tools unreachable (or its project domain "
+                     "unavailable) — MCP tool sessions could not be "
+                     "rebuilt, so the job was not run. Fix mcp-tools, "
+                     "then resume/re-dispatch.")
+    _save(job)
+    _notify("job.failed", job)
+    if job.get("debate"):
+        _mark_debate_stuck(job, {"status": "failed"})
+    if job.get("devteam"):
+        _mark_devteam_stuck(job, {"status": "failed"})
+    if job.get("hardware"):
+        _mark_hardware_stuck(job, {"status": "failed"})
+
+
+def _worker_loop() -> None:
+    _jobs_dir.mkdir(parents=True, exist_ok=True)
+    _debates_dir.mkdir(parents=True, exist_ok=True)
+    _liaison_dir.mkdir(parents=True, exist_ok=True)
+    _devteam_dir.mkdir(parents=True, exist_ok=True)
+    _hardware_dir.mkdir(parents=True, exist_ok=True)
+    _recover_stale()
+    agents = _build_agents()
     print(f"[jobs] worker ready — polling {_jobs_dir} every {_POLL_S}s")
     while True:
         try:
             for job in _queued_jobs():
                 # Re-read in case mcp-tools cancelled it meanwhile.
                 current = _load(_job_path(job["id"]))
-                if current and current.get("status") == "queued":
-                    _run_job(agents, current)
+                if not (current and current.get("status") == "queued"):
+                    continue
+                # Hard precondition: never start a job on dead MCP tool
+                # sessions (mcp-tools restarted since the agents were
+                # built, or was down at build time — both look identical:
+                # every tool call fails while the job runs on). Reconnect
+                # and rebuild; if mcp-tools is genuinely down, park the
+                # job instead of running it toolless.
+                if not tools_session_alive():
+                    print("[jobs] MCP tool sessions dead — reconnecting "
+                          "to mcp-tools and rebuilding agents")
+                    reset_tools()
+                    if not get_domain_tools("project"):
+                        _fail_job_no_tools(current)
+                        continue
+                    agents = _build_agents()
+                _run_job(agents, current)
         except Exception:  # noqa: BLE001 — the worker must survive anything
             print(f"[jobs] worker loop error:\n{traceback.format_exc()}")
         time.sleep(_POLL_S)
+
+
+def _stall_watchdog_loop() -> None:
+    """Early-warning thread: a running job whose step heartbeat has been
+    silent for config.JOB_STALL_NOTIFY_S gets ONE job.stalled webhook.
+    Notification only, deliberately: the blocked worker thread cannot be
+    killed from outside, and a hung model call is already bounded by
+    config.MODEL_TIMEOUT_S — this is the human signal that the worker may
+    be wedged (e.g. an MCP tool call hanging). The remedy for a true wedge
+    is restarting smolagents, which _recover_stale() then converts into a
+    failed job and a stuck (resumable) session. Never writes a job record:
+    the runner owns those files and a concurrent write would race its
+    heartbeat saves."""
+    notified: set[str] = set()
+    while True:
+        try:
+            for path in _jobs_dir.glob("job-*.json"):
+                job = _load(path)
+                if not job or "id" not in job:
+                    continue
+                if job.get("status") != "running":
+                    notified.discard(job["id"])
+                    continue
+                silent_s = time.time() - (job.get("heartbeat_ts") or 0)
+                if silent_s < config.JOB_STALL_NOTIFY_S or job["id"] in notified:
+                    continue
+                notified.add(job["id"])
+                # Local mutation for the webhook payload only — not saved.
+                job["error"] = (
+                    f"no step heartbeat for {int(silent_s)}s — the worker "
+                    "may be wedged on a hung model or tool call; restart "
+                    "smolagents if this persists (the job then lands as "
+                    "failed and its session as stuck/resumable)")
+                if not job.get("report"):
+                    job["report"] = {}
+                print(f"[jobs] job {job['id']} stalled: {job['error']}")
+                _notify("job.stalled", job)
+        except Exception:  # noqa: BLE001 — the watchdog must survive anything
+            print(f"[jobs] stall watchdog error:\n{traceback.format_exc()}")
+        time.sleep(60)
 
 
 def start_job_worker() -> threading.Thread:
     thread = threading.Thread(target=_worker_loop, name="job-worker",
                               daemon=True)
     thread.start()
+    threading.Thread(target=_stall_watchdog_loop, name="job-stall-watchdog",
+                     daemon=True).start()
     return thread

@@ -37,9 +37,12 @@ def current_datetime() -> str:
 
 
 def _mounted_domains() -> set[str] | None:
-    """Domains the tool server reports as mounted; None if it is unreachable."""
+    """Domains the tool server reports as mounted; None if it is unreachable.
+    Only a successful fetch is cached — caching a failure (the old behavior)
+    meant one transient blip at startup disabled every MCP domain for the
+    process lifetime (the 2026-07-16 yield-logic devteam incident)."""
     global _mounted
-    if _mounted is False:
+    if _mounted is False or _mounted is None:
         try:
             resp = httpx.get(f"{config.MCP_TOOLS_URL}/healthz", timeout=5)
             _mounted = set(resp.json().get("domains", []))
@@ -85,6 +88,43 @@ def get_domain_tools(domain: str) -> list:
     return tools
 
 
+def tools_session_alive() -> bool:
+    """True when the cached MCP tool sessions still answer a real round
+    trip. The persistent MCPClient sessions die silently when mcp-tools
+    restarts (and stay dead — no reconnect), and an agent built while the
+    server was down has no MCP tools at all; both states look identical
+    from the agent's side: every project_*/... call fails while the job
+    keeps running. One cached domain's tools_help('') proves the shared
+    server session; all clients connect to the same server, so one dead
+    session means all are dead."""
+    for tools in _domain_tools_cache.values():
+        for mcp_tool in tools:
+            if mcp_tool.name == "tools_help":
+                try:
+                    mcp_tool(path="")
+                    return True
+                except Exception:  # noqa: BLE001 — any failure means dead
+                    return False
+    return False  # nothing cached — tools were never loaded
+
+
+def reset_tools() -> None:
+    """Forget every cached client, tool list, and mounted-domain result so
+    the next get_domain_tools() reconnects fresh. Call after a dead-session
+    detection (tools_session_alive() False) before rebuilding agents; the
+    stale Tool objects held by existing agents keep pointing at the dead
+    clients, so agents must be rebuilt afterwards, not reused."""
+    global _mounted
+    for client in _clients:
+        try:
+            client.disconnect()
+        except Exception:  # noqa: BLE001 — dead sessions may refuse cleanup
+            pass
+    _clients.clear()
+    _domain_tools_cache.clear()
+    _mounted = False
+
+
 def get_domains_tools(*domains: str) -> list:
     """Merged tools from several domains, deduplicated by name — every domain
     endpoint carries the shared tools_help tool, and smolagents requires
@@ -92,7 +132,9 @@ def get_domains_tools(*domains: str) -> list:
     so every ToolCallingAgent has clock access (models confabulate dates —
     observed live). Appended only when MCP tools loaded, so the callers'
     `get_domains_tools(...) or [fallback]` degradation still fires when the
-    tool server is down."""
+    tool server is down — and only when the server didn't already provide
+    its own current_datetime (registered on every domain endpoint alongside
+    tools_help; a duplicate name crashes agent init)."""
     seen: set[str] = set()
     merged = []
     for domain in domains:
@@ -101,6 +143,6 @@ def get_domains_tools(*domains: str) -> list:
                 continue
             seen.add(mcp_tool.name)
             merged.append(mcp_tool)
-    if merged:
+    if merged and current_datetime.name not in seen:
         merged.append(current_datetime)
     return merged

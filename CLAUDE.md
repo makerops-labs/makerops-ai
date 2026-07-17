@@ -98,6 +98,30 @@ system" bullet below.
   everyone else `SMOLAGENTS_MAX_STEPS` (12). A managed agent's whole run
   is ONE step of its caller, so deep research doesn't eat the manager's
   job budget.
+- **MCP tool sessions are process-lifetime and die silently when
+  mcp-tools restarts** (2026-07-16 yield-logic incident: both devteam
+  engagements ran every phase with dead `project_*` tools — zero files
+  landed while phases self-reported "completed"). Worker defenses, all in
+  `agents/jobs.py` + `agents/tools.py`: (1) pre-job
+  `tools_session_alive()` round trip — on a dead session the worker
+  resets the tool cache and REBUILDS all agents (agents hold Tool objects
+  bound to the dead clients, so reuse is never safe), or parks the job
+  failed + session stuck when mcp-tools is truly down; (2) deterministic
+  deliverable-landing validation in `_advance_devteam`/`_advance_hardware`
+  — a "completed" phase whose deliverables point into `/data` scratch, or
+  (for file-mandate kinds) are only inline document text, parks the
+  session stuck instead of advancing (judged from location shape, not the
+  declared `type=`, which models mislabel); (3) explicit model-call
+  timeout (`SMOLAGENTS_MODEL_TIMEOUT_S`, 30 min) so a wedged Ollama call
+  becomes a failed job instead of an eternally "running" one blocking the
+  single-threaded worker; (4) a stall watchdog firing one `job.stalled`
+  webhook after `SMOLAGENTS_JOB_STALL_NOTIFY_S` (45 min) of heartbeat
+  silence — notify-only, threads can't be killed. Caveat: the Gradio chat
+  UI's agents (`app.py`) are still built once at startup with no
+  self-heal — after an mcp-tools restart, restart smolagents too if the
+  chat UI's tools matter. `PYTHONUNBUFFERED=1` is set in compose so the
+  `[jobs]`/`[tools]` diagnostics actually reach `docker logs` (they were
+  fully lost during the incident).
 - **Project workspaces are a different thing from the job queue above**:
   `~/workspace/<project-name>` directories are user-created **siblings of
   `~/workspace/makerops/`** (never inside it), registered and read/written

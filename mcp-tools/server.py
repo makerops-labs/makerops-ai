@@ -54,11 +54,30 @@ async def tools_help(path: str = "") -> str:
                     "Start with tools_help('') for the domain manifest.")
 
 
+async def current_datetime() -> str:
+    """Current date and time (server wall clock, with timezone and UTC).
+    Call this before reasoning about dates, deadlines, recency, or "latest"
+    anything — a model's assumed date is usually stale.
+
+    Returns e.g. '2026-07-16 22:30 -0500 (Thursday) | UTC 2026-07-17 03:30'.
+    """
+    from datetime import datetime, timezone as _tz
+    now = datetime.now().astimezone()
+    return (f"{now.strftime('%Y-%m-%d %H:%M %z (%A)')} | "
+            f"UTC {datetime.now(_tz.utc).strftime('%Y-%m-%d %H:%M')}")
+
+
+# tools_help and current_datetime are registered on EVERY domain endpoint so
+# any agent can browse the docs and check the clock regardless of which
+# domains it carries. Name matches smolagents' local current_datetime tool
+# (agents/tools.py), whose append is guarded against the duplicate.
 for sub in domains.values():
     sub.tool(tools_help)
+    sub.tool(current_datetime)
 
 composed = FastMCP("makerops-tools")
 composed.tool(tools_help)  # local registration wins over the mounted copies
+composed.tool(current_datetime)
 for sub in domains.values():
     # Tools already carry their domain prefix in their names; mount unprefixed.
     composed.mount(sub)

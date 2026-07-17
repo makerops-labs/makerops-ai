@@ -26,8 +26,15 @@ services:
       - 1.1.1.1
     env_file: .env
     environment:
+      # Containers default to UTC, which put agent-visible dates a day ahead
+      # every evening (host is America/Chicago).
+      TZ: "${TZ:-America/Chicago}"
       OLLAMA_API_BASE: "${OLLAMA_API_BASE:-http://host.docker.internal:11434/v1}"
       SMOLAGENTS_DATA_DIR: /data
+      # Unbuffered stdout so the [jobs]/[tools] diagnostics actually reach
+      # `docker logs` — during the 2026-07-16 devteam incident the container
+      # had ZERO log output and the dead-tool-session prints were lost.
+      PYTHONUNBUFFERED: "1"
     volumes:
       - ${SMOLAGENTS_DATA_PATH:-./data/smolagents}:/data
       # Agent code is bind-mounted so edits only need a container restart;
