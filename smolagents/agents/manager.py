@@ -18,6 +18,7 @@ from smolagents import CodeAgent, tool
 
 from . import config
 from .audit_agent import build_audit_agent
+from .career_agent import build_career_agent
 from .coding_agent import build_coding_agent
 from .context import with_baseline
 from .investment_agent import build_investment_agent
@@ -387,6 +388,7 @@ def build_manager_agent() -> CodeAgent:
                         build_ops_agent(), build_writer_agent(),
                         build_studio_agent(), build_audit_agent(),
                         build_maintainer_agent(), build_investment_agent(),
+                        build_career_agent(),
                         *_build_custom_agents()],
         additional_authorized_imports=["json", "pathlib", "datetime"],
         instructions=with_baseline(_PROCEDURE),

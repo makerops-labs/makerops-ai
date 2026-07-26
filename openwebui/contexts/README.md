@@ -58,6 +58,7 @@ domain endpoint also carries a `current_datetime` tool (alongside
 | [Debate Moderator](debate-moderator.md) | qwen3.6:35b-64k | debate, web |
 | [Researcher](researcher.md) | qwen3.6:35b-64k | web |
 | [Investment Strategist](investment-strategist.md) | qwen3.6:35b-64k | web, project |
+| [Career Coach](career-coach.md) | qwen3.6:35b-64k | web, project |
 | [Research Assistant](research-assistant.md) | qwen3.5:9b | web |
 | [Ops Assistant](ops-assistant.md) | qwen3.5:9b | outline, inventree, plane, n8n, freescout, triggerdev, approvals, web |
 | [Knowledge Curator](knowledge-curator.md) | qwen3.5:9b | outline, web, approvals |
@@ -91,7 +92,9 @@ researcher ≈ Researcher (the structured research briefs the manager and
 debate turns delegate to — same fixed brief format both sides),
 investment_strategist ≈ Investment Strategist (same fixed assessment
 format both sides; both keep warm memos in the registered `investments`
-project), ops ≈ Ops Assistant, coder ≈ Coding Assistant,
+project), career_coach ≈ Career Coach (both keep the master career profile
+and per-application drafts in the registered `career-profile` project),
+ops ≈ Ops Assistant, coder ≈ Coding Assistant,
 writer ≈ Knowledge Curator, studio ≈ Studio. For the narrower ones (Inventory Manager), scaffold an
 equivalent agent with `agent_create` if you want it in the agent workspace
 too.

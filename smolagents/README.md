@@ -16,6 +16,7 @@ It ships with ten starter agents (models follow the lead-per-domain hierarchy in
 | `auditor` | reviewer pool | Independent multi-model review of finished work (see below) |
 | `maintainer` | `qwen3.6:35b-64k` | Self-improvement loop: reviews job/audit history, researches fixes, files Outline reports + Plane issues (see "Self-improvement loop") |
 | `investment_strategist` | `qwen3.6:35b-64k` | Sourced, risk-weighted investment assessments (thesis, risks, base rates, falsifiers, verdict); carries `researcher` as its own sub-agent and keeps warm memos in the registered `investments` project. The Investment Strategist Open WebUI preset is the direct-chat equivalent |
+| `career_coach` | `qwen3.6:35b-64k` | Multi-session career-profile building (history, identity/boundaries, T-shaped positioning lanes) plus ATS-optimized, tailored resume/cover-letter drafting per target role, backed by live company/posting/salary research; also writes internal-use application strategy notes. Keeps everything in the registered `career-profile` project. The Career Coach Open WebUI preset is the direct-chat equivalent |
 
 A second, separate team lives in `agents/devteam/`: a **lead architect**
 (manager-shaped orchestrator, general lead) managing `product_analyst`, five
@@ -426,6 +427,7 @@ Browser                              Open WebUI / any MCP client
                 │     ├─► auditor  (reviewer pool — multi-model second opinions)
                 │     ├─► maintainer  (qwen3.6:35b-64k — self-improvement: job/audit review → Outline + Plane)
                 │     ├─► investment_strategist  (qwen3.6:35b-64k — sourced investment assessments; owns a researcher sub-agent)
+                │     ├─► career_coach  (qwen3.6:35b-64k — multi-session career profile + tailored resume/cover-letter drafting)
                 │     └─► agents/custom/*  (auto-discovered custom agents)
                 ├─► host.docker.internal:11434/v1  → Ollama OpenAI-compatible API
                 ├─► host.docker.internal:8099/mcp/<domain>/  → mcp-tools (tool server)

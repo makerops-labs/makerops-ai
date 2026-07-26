@@ -133,6 +133,12 @@ RESEARCHER_MODEL_ID = os.environ.get("SMOLAGENTS_RESEARCHER_MODEL_ID", "")
 # sub-agent. Empty = the general lead.
 INVESTMENT_MODEL_ID = os.environ.get("SMOLAGENTS_INVESTMENT_MODEL_ID", "")
 
+# Career coach (agents/career_agent.py) — multi-session career-profile
+# building plus tailored resume/cover-letter drafting; keeps its master
+# profile and per-application material in the registered `career-profile`
+# project. Empty = the general lead.
+CAREER_MODEL_ID = os.environ.get("SMOLAGENTS_CAREER_MODEL_ID", "")
+
 # Step budgets are role-shaped, not one-size: research is exploration into
 # the unknown and gets a deep internal budget (its whole run still counts
 # as ONE step of whoever delegated to it); debate personas stay tightly
@@ -144,6 +150,10 @@ RESEARCHER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_RESEARCHER_MAX_STEPS", "40
 # per researcher run), but memo reads/writes and quick lookups need more
 # headroom than the default specialist budget.
 INVESTMENT_MAX_STEPS = int(os.environ.get("SMOLAGENTS_INVESTMENT_MAX_STEPS", "20"))
+# Similar shape to the investment strategist: reading several master files
+# plus per-application research and drafting can take more round-trips than
+# the default specialist budget.
+CAREER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_CAREER_MAX_STEPS", "20"))
 DEBATE_PERSONA_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEBATE_PERSONA_MAX_STEPS", "12"))
 
 # Hard cap on a single round file's size (chars) — a backstop, not the
