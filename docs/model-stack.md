@@ -13,7 +13,7 @@ RAM. Models >16 GB partially offload to CPU — cheap for MoE models (few
 active parameters), expensive for dense ones. Stop `trellis` before loading
 any `qwen3.6:35b*` model (host-RAM starvation; see CLAUDE.md).
 
-Last updated: 2026-07-16.
+Last updated: 2026-08-08.
 
 ## Installed models
 
@@ -49,3 +49,29 @@ Last updated: 2026-07-16.
   if a point release overtakes them.
 - **Granite 4.1 8B / Phi-4-reasoning-vision 15B** — peers of `qwen3.5:9b`,
   not upgrades.
+
+## Evaluated and rejected (2026-08-08 research pass)
+
+- **Qwen3.8-Max** (2.4T MoE, ~95B active) — Alibaba's new flagship
+  (announced 2026-08-03); far past any local fit.
+- **Kimi K2.6** (1T MoE, 32B active) / **Kimi K3** (2.8T MoE) — Moonshot's
+  latest; both need hundreds of GB even quantized.
+- **DeepSeek V3.2** (671B MoE) / **V4-Flash** (284B) / **V4-Pro** (1.6T) —
+  all far past the hardware envelope; R2 still unreleased.
+- **GLM-5.2** (744B MoE) — still the top open-weights coder per public
+  benchmarks, still the same rejected size class as the July pass.
+- **GPT-OSS-120b** (117B) — needs a single 80 GB GPU; `gpt-oss:20b`
+  remains the only GPT-OSS variant that fits.
+- **Devstral Small 2** (24B, ~15-19 GB at Q4_K_M) — fits the VRAM envelope
+  but scores 68% SWE-bench Verified, below both `qwen3.6:35b` (73.4%) and
+  `qwen3.6:27b` (77.2%). No win.
+- **Llama 4 Maverick** (~400B) — too big; Scout (109B) already rejected in
+  the July pass.
+- **Gemma 4 31B dense** — trails `qwen3.5:27b` (predecessor of the current
+  leads) on SWE-bench Verified per its own release benchmarks.
+
+**Pending / watch:** **Qwen3.8-27B** — announced alongside Max, open
+weights targeted for the week of 2026-08-10. Not yet published as of this
+pass (no architecture or benchmark details public). Same size class as the
+current `qwen3.6:27b` dense specialist and a plausible successor — re-run
+this evaluation once weights and SWE-bench/tok-s numbers exist.
