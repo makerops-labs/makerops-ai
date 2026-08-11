@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 SANDBOX_TOKEN = os.environ.get("SANDBOX_TOKEN", "")
 
-# Absolute HOST path (e.g. /home/scher/workspace) — the same value backing
+# Absolute HOST path (e.g. /home/YOUR_USER/workspace) — the same value backing
 # mcp-tools' WORKSPACES_ROOT. Deliberately NOT mounted into this container:
 # Docker's daemon resolves bind-mount sources against the HOST filesystem
 # regardless of which container's process asked for them (this service

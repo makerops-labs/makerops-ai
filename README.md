@@ -486,21 +486,14 @@ Hard-won specifics — check here before deep-diving (core-side basics like
 
 ---
 
-## Attribution
+## License
 
-**Open WebUI** is open-source software developed and maintained by the [Open WebUI contributors](https://github.com/open-webui/open-webui/graphs/contributors), made freely available under the [MIT License](https://github.com/open-webui/open-webui/blob/main/LICENSE).
+MakerOps AI is licensed under the [PolyForm Shield License 1.0.0](LICENSE).
 
-**smolagents** is open-source software developed and maintained by [Hugging Face](https://huggingface.co) and the [smolagents contributors](https://github.com/huggingface/smolagents/graphs/contributors), made freely available under the [Apache 2.0 License](https://github.com/huggingface/smolagents/blob/main/LICENSE).
+**Permitted:** Personal use, educational use, internal business operations, and setup/consulting services.
+**Prohibited:** Selling or sublicensing the software, integrating it into commercial products sold to others, or offering it as a hosted or managed service.
 
-**SearXNG** is open-source software developed and maintained by the [SearXNG contributors](https://github.com/searxng/searxng/graphs/contributors), made freely available under the [AGPL-3.0 License](https://github.com/searxng/searxng/blob/master/LICENSE).
-
-**FastMCP** (used by the mcp-tools service) is open-source software developed and maintained by the [FastMCP contributors](https://github.com/jlowin/fastmcp/graphs/contributors), made freely available under the [Apache 2.0 License](https://github.com/jlowin/fastmcp/blob/main/LICENSE).
-
-**speaches** is open-source software developed and maintained by the [speaches contributors](https://github.com/speaches-ai/speaches/graphs/contributors), made freely available under the [MIT License](https://github.com/speaches-ai/speaches/blob/master/LICENSE).
-
-**Kokoro-FastAPI** is open-source software developed and maintained by the [Kokoro-FastAPI contributors](https://github.com/remsky/Kokoro-FastAPI/graphs/contributors), made freely available under the [Apache 2.0 License](https://github.com/remsky/Kokoro-FastAPI/blob/master/LICENSE); the underlying [Kokoro-82M model](https://huggingface.co/hexgrad/Kokoro-82M) is released under the Apache 2.0 License.
-
-**Hermes Agent** is open-source software developed and maintained by [Nous Research](https://nousresearch.com) and the [hermes-agent contributors](https://github.com/NousResearch/hermes-agent/graphs/contributors), made freely available under the [MIT License](https://github.com/NousResearch/hermes-agent/blob/main/LICENSE).
+Third-party software integrated by this stack (Open WebUI, smolagents, SearXNG, FastMCP, speaches, Kokoro-FastAPI, Hermes Agent, TRELLIS) is governed by its own license. See [NOTICE](NOTICE) for the full list of upstream projects and their licenses.
 
 ---
 

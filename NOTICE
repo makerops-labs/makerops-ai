@@ -1,0 +1,50 @@
+MakerOps AI
+Copyright (c) 2026 Sean Cherbone
+
+This repository contains configuration and orchestration files for deploying
+the following third-party open-source software. Each project is the work of
+its respective authors and contributors and is governed by its own license.
+
+-------------------------------------------------------------------------------
+
+Open WebUI
+https://github.com/open-webui/open-webui
+License: MIT
+https://github.com/open-webui/open-webui/blob/main/LICENSE
+
+smolagents
+https://github.com/huggingface/smolagents
+License: Apache License 2.0
+https://github.com/huggingface/smolagents/blob/main/LICENSE
+
+SearXNG
+https://github.com/searxng/searxng
+License: GNU Affero General Public License v3.0
+https://github.com/searxng/searxng/blob/master/LICENSE
+
+FastMCP (used by the mcp-tools service)
+https://github.com/jlowin/fastmcp
+License: Apache License 2.0
+https://github.com/jlowin/fastmcp/blob/main/LICENSE
+
+speaches
+https://github.com/speaches-ai/speaches
+License: MIT
+https://github.com/speaches-ai/speaches/blob/master/LICENSE
+
+Kokoro-FastAPI
+https://github.com/remsky/Kokoro-FastAPI
+License: Apache License 2.0
+https://github.com/remsky/Kokoro-FastAPI/blob/master/LICENSE
+Underlying model: Kokoro-82M (Apache License 2.0)
+https://huggingface.co/hexgrad/Kokoro-82M
+
+Hermes Agent
+https://github.com/NousResearch/hermes-agent
+License: MIT
+https://github.com/NousResearch/hermes-agent/blob/main/LICENSE
+
+TRELLIS (microsoft/TRELLIS-image-large, used by the trellis service)
+https://github.com/microsoft/TRELLIS
+License: MIT
+https://github.com/microsoft/TRELLIS/blob/main/LICENSE

@@ -1,10 +1,10 @@
 # makerops-ai
 
-**Private** agentic AI ecosystem layered on the public
+**Public** (since 2026-08-10) agentic AI ecosystem layered on the public
 [makerops-core](https://github.com/makerops-labs/makerops-core) stack.
-Deliberately split from core (2026-07-04, public history scrubbed): the user
-wants to slow AI adoption/job displacement — only well-known foundational
-tools stay public. **Never move or commit this repo's content into
+Split from core (2026-07-04, core's public history scrubbed of AI-ecosystem
+work) to keep the two repos' version control separate; both are now public,
+but the split itself stays — **never move or commit this repo's content into
 makerops-core**, and keep any core-side reference local-only (core's
 `.git/info/exclude`, never its tracked `.gitignore`).
 
