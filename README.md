@@ -1,16 +1,18 @@
-# makerops-ai
+# MakerOps AI
 
-Private AI-agent ecosystem for the MakerOps stack: chat UI, agent workspace,
-tool server, private web search, speech, and persistent-memory tooling —
-everything that composes the foundational inference services into an agentic
-system. Runs entirely on-premise; no API keys, no data leaving the host, no
-per-token costs.
+![MakerOps AI](assets/images/makerops-ai-hero.png)
 
-This repo is deliberately **private**. The intent is to keep well-known
-foundational tools public in
-[makerops-core](https://github.com/makerops-labs/makerops-core) (Ollama,
-ComfyUI) while not accelerating the adoption of the agentic composition
-built on top of them.
+The agentic AI ecosystem layered on the public
+[makerops-core](https://github.com/makerops-labs/makerops-core) stack: chat
+UI, agent workspace, tool server, private web search, speech, and
+persistent-memory tooling — everything that composes the foundational
+inference services into an agentic system. Runs entirely on-premise; no API
+keys, no data leaving the host, no per-token costs.
+
+Split from core (2026-07-04, core's public history scrubbed of AI-ecosystem
+work) to keep the two repos' version control separate; both are now public,
+but the split itself stays — this repo holds the agentic AI tooling, core
+holds the business services and foundational GPU services (Ollama, ComfyUI).
 
 ## Prerequisites (from makerops-core)
 
