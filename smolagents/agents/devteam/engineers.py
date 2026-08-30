@@ -1,5 +1,6 @@
-"""Devteam engineer specialists: five role-briefed CodeAgents on the coding
-lead, all built from one helper.
+"""Devteam engineer specialists: five role-briefed CodeAgents on
+config.DEVTEAM_ENGINEER_MODEL_ID (a dedicated pin, not the coding lead —
+see that config entry), all built from one helper.
 
 Same shape as agents/coding_agent.py (project tools only, minimal imports,
 write-then-verify discipline) — the roles differ in persona, not mechanism,
@@ -45,7 +46,7 @@ _ENGINEER_COMMON = (
 def _build_engineer(name: str, description: str, persona: str) -> CodeAgent:
     return CodeAgent(
         tools=get_domains_tools("project"),
-        model=get_model("coding"),
+        model=get_model("coding", model_id=config.DEVTEAM_ENGINEER_MODEL_ID or None),
         additional_authorized_imports=AUTHORIZED_IMPORTS,
         name=name,
         description=description,

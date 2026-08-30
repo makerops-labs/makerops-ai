@@ -115,12 +115,22 @@ one lead model (the best benchmark performer that runs on this hardware), and
 multi-model review uses same-expertise models with *lower* benchmark scores as
 supplementary reviewers to catch the lead's blind spots. Reviewer pools
 deliberately include a different lineage (gpt-oss, OpenAI) so the models don't
-share training blind spots.
+share training blind spots. Since 2026-08-26, "best that runs on this
+hardware" splits by **workload latency sensitivity**, not just by domain:
+interactive/chat-facing roles keep the fastest good-enough model, while
+unattended background queues (devteam engineer phases, the hardware
+specialist below, reviewers) can afford a slower, higher-benchmark model —
+the machine sits idle between jobs anyway. See `docs/model-stack.md`'s
+2026-08-26 pass. **Any `qwen3.8:27b` usage in this stack means the
+`-64k` derivative, never the bare tag** — the bare tag's reasoning
+exhausts Ollama's 4k default context before producing output (observed
+2026-08-28; see that doc's 2026-08-28 note).
 
 | Domain | Lead | Reviewers |
 | --- | --- | --- |
-| Coding | `qwen3.6:35b` (73.4% SWE-bench Verified) | `qwen3.6:27b`, `gpt-oss:20b` |
-| KiCad build-plans (hardware specialist) | `qwen3.6:27b` (dense, structure-precise; 77.2% SWE-bench Verified but ~14 tok/s here — reviewer/specialist, not lead) | — |
+| Coding (interactive — chat coder, Coding Assistant preset) | `qwen3.6:35b` (73.4% SWE-bench Verified) | `qwen3.8:27b-64k`, `gpt-oss:20b` |
+| Coding (background — devteam engineer phases) | `qwen3.8:27b-64k` (dense; successor to qwen3.6:27b — SWE-bench Pro 61.7% vs 53.5%, Terminal-Bench 2.1 73.0% vs 63.4%; same footprint, ~14 tok/s here, fine for unattended phases; **-64k required** — this model's reasoning exhausts Ollama's 4k default before producing output, observed 2026-08-28) | — |
+| KiCad build-plans (hardware specialist) | `qwen3.8:27b-64k` (dense, structure-precise; same as above — reviewer/specialist-class speed, not the interactive lead) | — |
 | Default chat / task dispatch | `qwen3.6:35b-64k` (derivative, checklist §1) | — |
 | General / agents / planning | `qwen3.6:35b-64k` (same derivative — one resident general model for chat and agents) | `qwen3.5:9b`, `gpt-oss:20b` |
 | Vision understanding | `qwen3.5:9b` / `qwen3.6:35b` (both natively multimodal) | — |

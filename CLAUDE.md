@@ -27,21 +27,31 @@ across projects.
 
 Lead-per-domain: best benchmark performer that fits the hardware leads;
 same-expertise models (plus cross-lineage `gpt-oss:20b`) review to catch
-blind spots. Currently: `qwen3.6:35b` coding, `qwen3.6:35b-64k`
-general/agents AND default chat/dispatch (one resident model; the trellis
-stop-first RAM gotcha now applies to agent jobs too), `qwen3.6:27b`
-hardware/KiCad specialist + coding reviewer (dense; out-benchmarks the
-35b coding lead 77.2 vs 73.4 SWE-bench Verified but measured ~14 tok/s
-generation / ~62 tok/s prefill here — too slow to lead agentic loops),
-`qwen3.5:9b` vision + light presets (former general lead, now also a
-general reviewer), `qwen3-embedding:0.6b` RAG. Switch leads on benchmark evidence
-(no local A/B gate); old lead becomes a reviewer. On a switch update:
-`SMOLAGENTS_*_MODEL_ID` env vars, `openwebui/contexts/*.md` base models,
-README table. The debate system applies the same reviewer-decorrelation
-reasoning to its critic persona (defaults to `gpt-oss:20b-32k` — a num_ctx
-derivative of the reviewer pools' model; the base serves at Ollama's 4k
-default, which truncates a debate turn mid-answer) — see the "Debate
-system" bullet below.
+blind spots. Since 2026-08-26 this also splits by **workload latency
+sensitivity**: interactive/chat-facing roles keep the fastest good-enough
+model, unattended background queues (devteam engineer phases, hardware
+specialist, reviewers) can prefer a slower higher-benchmark model instead —
+see `docs/model-stack.md`'s 2026-08-26 pass. Currently: `qwen3.6:35b`
+coding lead (interactive — chat coder, Coding Assistant preset),
+`qwen3.6:35b-64k` general/agents AND default chat/dispatch (one resident
+model; the trellis stop-first RAM gotcha now applies to agent jobs too),
+`qwen3.8:27b-64k` hardware/KiCad specialist + coding reviewer + devteam
+engineer phases (dense; successor to qwen3.6:27b, out-benchmarks the 35b
+coding lead — SWE-bench Pro 61.7 vs — Terminal-Bench 2.1 73.0 vs 63.4 —
+but measured ~14 tok/s generation on the 3.6 generation (same
+architecture/footprint) — too slow to lead *interactive* agentic loops,
+fine for background ones; the `-64k` derivative is required, not the
+bare tag — this model's reasoning exhausts Ollama's 4k default context
+before producing output, observed 2026-08-28), `qwen3.5:9b` vision +
+light presets (former
+general lead, now also a general reviewer), `qwen3-embedding:0.6b` RAG.
+Switch leads on benchmark evidence (no local A/B gate); old lead becomes a
+reviewer. On a switch update: `SMOLAGENTS_*_MODEL_ID` env vars,
+`openwebui/contexts/*.md` base models, README table. The debate system
+applies the same reviewer-decorrelation reasoning to its critic persona
+(defaults to `gpt-oss:20b-32k` — a num_ctx derivative of the reviewer
+pools' model; the base serves at Ollama's 4k default, which truncates a
+debate turn mid-answer) — see the "Debate system" bullet below.
 
 ## Architecture facts that cost debugging time
 
@@ -229,7 +239,7 @@ system" bullet below.
   smolagents/hardware`, bind-mounted into mcp-tools as `/agent-hardware`.
   `embedded_architect` (never registered on the general manager, built
   once in `_worker_loop`) orchestrates `kicad_specialist` — pinned to
-  `qwen3.6:27b` via `HARDWARE_SPECIALIST_MODEL_ID`, a deliberate
+  `qwen3.8:27b-64k` via `HARDWARE_SPECIALIST_MODEL_ID`, a deliberate
   deviation from every other `*_MODEL_ID`'s empty-default-falls-back-to-
   lead convention — through requirements → architecture (emits a
   milestone plan, one per functional block, validated by the same
@@ -262,7 +272,7 @@ system" bullet below.
 ## Hardware envelope
 
 RTX 4070 Ti SUPER 16 GB VRAM; WSL2 capped at 24 GB RAM (`.wslconfig`).
-Models >16 GB (`qwen3.6:35b*` and `qwen3.6:27b`) partially offload to RAM — if a load is
+Models >16 GB (`qwen3.6:35b*` and `qwen3.8:27b-64k`) partially offload to RAM — if a load is
 OOM-killed (`signal: killed` during tensor load), free RAM or raise the cap.
 Speech stays CPU-only to protect VRAM. Flash attention is on in Ollama.
 TRELLIS wants most of the 16 GB during a generation — run it while the LLMs

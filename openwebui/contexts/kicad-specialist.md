@@ -16,7 +16,12 @@ knowledge and whatever design documents you show it or that already live
 in a registered project; it cannot run ERC/DRC, generate gerbers, or open
 a KiCad file itself.
 
-- **Base model:** `qwen3.6:27b`
+- **Base model:** `qwen3.8:27b-64k` (successor to `qwen3.6:27b`, swapped
+  2026-08-26 — same footprint/speed, meaningfully better benchmarks; see
+  `docs/model-stack.md`'s 2026-08-26 pass. The `-64k` derivative is
+  required, not the bare tag — this model's reasoning exhausts Ollama's
+  4k default context before producing output, observed 2026-08-28, see
+  that doc's 2026-08-28 note)
 - **Tool connections:** `http://host.docker.internal:8099/mcp/project/`
 
 ## System prompt

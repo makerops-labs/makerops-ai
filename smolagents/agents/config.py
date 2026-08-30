@@ -41,12 +41,18 @@ def _model_list(env_var: str, default: str) -> list[str]:
 # Reviewer pools for the audit agent: same-expertise models used to catch
 # the lead model's blind spots. gpt-oss is a different lineage (OpenAI vs
 # Qwen), which decorrelates the review. See the model hierarchy table in
-# README.md. qwen3.6:27b actually out-benchmarks the 35b coding lead
-# (77.2 vs 73.4 SWE-bench Verified) but is dense — ~14 tok/s generation and
-# ~62 tok/s prefill on this hardware (measured 2026-07-16) — too slow to
-# lead agentic loops, so it reviews instead.
+# README.md. qwen3.8:27b-64k (successor to qwen3.6:27b, swapped 2026-08-26)
+# out-benchmarks the 35b coding lead (61.7 vs — SWE-bench Pro) but is
+# dense — ~14 tok/s generation on this hardware (measured on the 3.6
+# generation, 2026-07-16; same architecture/footprint) — too slow to lead
+# agentic loops. Reviews are unattended background work, so the speed
+# penalty is free here (see docs/model-stack.md's 2026-08-26 pass) — it
+# reviews instead of leading. The -64k derivative (not the bare tag) is
+# required: this model's reasoning burns Ollama's 4k default context
+# before ever producing review output (observed 2026-08-28 on the
+# Researcher preset — see docs/model-stack.md's 2026-08-28 note).
 CODING_REVIEW_MODEL_IDS = _model_list("SMOLAGENTS_CODING_REVIEW_MODEL_IDS",
-                                      "qwen3.6:27b,gpt-oss:20b")
+                                      "qwen3.8:27b-64k,gpt-oss:20b")
 # qwen3.5:9b is the former general lead, kept as a reviewer per the
 # lead-switch convention (old lead becomes a reviewer).
 GENERAL_REVIEW_MODEL_IDS = _model_list("SMOLAGENTS_GENERAL_REVIEW_MODEL_IDS",
@@ -223,6 +229,21 @@ DEVTEAM_DIR = os.path.join(DATA_DIR, "devteam")
 DEVTEAM_ARCHITECT_MODEL_ID = os.environ.get("SMOLAGENTS_DEVTEAM_ARCHITECT_MODEL_ID", "")
 DEVTEAM_ARCHITECT_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEVTEAM_ARCHITECT_MAX_STEPS", "32"))
 
+# Deliberate deviation from this file's usual empty-default-falls-back-to-
+# lead convention, same reasoning as HARDWARE_SPECIALIST_MODEL_ID below:
+# engineer phases are unattended background work (devteam's segment/
+# synopsis loop already tolerates long-running jobs), so they get the
+# highest-benchmark model that fits the hardware instead of the fast
+# CODING_MODEL_ID lead — the lead is reserved for latency-sensitive paths
+# (this same "coder" agent is also reachable live from the Gradio chat UI
+# via the manager, which stays fast because it goes through get_model
+# with no override). See docs/model-stack.md's 2026-08-26 pass. The -64k
+# derivative (not the bare tag) is required — this model's reasoning burns
+# Ollama's 4k default context before producing output (observed
+# 2026-08-28 on the Researcher preset; docs/model-stack.md's 2026-08-28
+# note).
+DEVTEAM_ENGINEER_MODEL_ID = os.environ.get("SMOLAGENTS_DEVTEAM_ENGINEER_MODEL_ID", "qwen3.8:27b-64k")
+
 # Engineer specialists get headroom above the default specialist budget
 # (12): an engineer sub-task is write-then-verify — code via project_*
 # tools plus a real project_run_command test/lint run before reporting —
@@ -265,12 +286,16 @@ HARDWARE_SPECIALIST_MAX_STEPS = int(os.environ.get("SMOLAGENTS_HARDWARE_SPECIALI
 # lead convention (every other *_MODEL_ID above defaults to ""): pinned
 # explicitly rather than following the coding lead. kicad_specialist's job —
 # translating a design brief into structured sheet/net/footprint tables —
-# wants dense structure-precision, which qwen3.6:27b (dense; took this role
-# over from qwen3-coder:30b, retired 2026-07) delivers best in the stack.
-# Keeping the pin explicit preserves that choice even if the coding lead
-# changes. Do not "fix" this back to empty to match the convention above;
-# that would undo a deliberate model choice.
-HARDWARE_SPECIALIST_MODEL_ID = os.environ.get("SMOLAGENTS_HARDWARE_SPECIALIST_MODEL_ID", "qwen3.6:27b")
+# wants dense structure-precision, which qwen3.8:27b (dense; took this role
+# over from qwen3.6:27b, swapped 2026-08-26 — same architecture/footprint,
+# meaningfully better benchmarks) delivers best in the stack. Keeping the
+# pin explicit preserves that choice even if the coding lead changes. Do
+# not "fix" this back to empty to match the convention above; that would
+# undo a deliberate model choice. The -64k derivative (not the bare tag)
+# is required — this model's reasoning burns Ollama's 4k default context
+# before producing output (observed 2026-08-28 on the Researcher preset;
+# docs/model-stack.md's 2026-08-28 note).
+HARDWARE_SPECIALIST_MODEL_ID = os.environ.get("SMOLAGENTS_HARDWARE_SPECIALIST_MODEL_ID", "qwen3.8:27b-64k")
 
 # Cap on per-block milestones the architecture phase may plan (one per
 # functional block — power, MCU, sensing, radio, etc.), same reasoning as

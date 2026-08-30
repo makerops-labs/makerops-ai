@@ -3,7 +3,7 @@
 Independent second opinion on code produced by another model (usually the
 coding lead, `qwen3.6:35b`). Uses `gpt-oss:20b` because its different
 lineage (OpenAI vs Qwen) decorrelates blind spots; for a same-lineage
-specialist pass, create a second copy of this preset on `qwen3.6:27b`
+specialist pass, create a second copy of this preset on `qwen3.8:27b-64k`
 (dense — actually out-benchmarks the lead on SWE-bench, but too slow on
 this hardware to lead; excellent as a reviewer). See the model hierarchy
 table in [README.md](../../README.md).

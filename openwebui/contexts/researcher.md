@@ -16,6 +16,14 @@ intend to rely on.
   Image Generation, Terminal (OpenWebUI's own native tools — they collide
   with the MCP tools above; see the note in this directory's README)
 
+> **Don't point this at a bare (non `-64k`/`-32k`) model tag.** This
+> preset's system prompt alone is substantial, and it explicitly instructs
+> "think first... use your private reasoning" before writing the brief —
+> a reasoning-heavy model can burn Ollama's 4k default context entirely on
+> thinking and never reach the brief (observed 2026-08-28 pointing this at
+> bare `qwen3.8:27b`: model reasoned internally, then returned no content).
+> Always use a context-derivative tag here.
+
 > **If this chat fails to load** (hangs, then errors, or Ollama logs
 > `llama-server process has terminated: signal: killed`): a running
 > `trellis` container is almost certainly the cause — see the same note

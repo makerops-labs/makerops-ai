@@ -14,6 +14,22 @@ tuning you do in the UI.
    (Streamable HTTP)** → URL `http://host.docker.internal:8099/mcp/<domain>/`
    (one connection per domain the preset lists — per-domain scoping keeps
    tool lists short, which local models need).
+   **Never attach the bare `http://host.docker.internal:8099/mcp/` connection
+   (no domain suffix) to any preset.** It's the unscoped root endpoint —
+   mcp-tools mounts *every* domain's tools onto it (`server.py`'s `composed`
+   app), ~68 tools combined as of 2026-08. A model that reaches for the
+   wrong one of 68 similarly-plausible tools instead of the 1-6 its preset
+   actually needs is a tool-selection reliability problem, not a
+   prompting or documentation one — no amount of `tools_help` polish or
+   system-prompt tuning fixes a tool list that's 10-20x too broad.
+   Audit found on 2026-08-28: 14 of 19 presets had this root connection
+   attached (plus an undocumented `arxiv_search_tool`) alongside their
+   real one, several missing their actual documented domain connections
+   entirely — this is what silently broke the Researcher preset's web
+   search (it called `arxiv_search_tool` instead). Fixed by resetting
+   every preset's tools to exactly what its own `.md` file documents; if
+   you add a new domain to a preset, add it to the `.md` file first, then
+   match the UI to it — never the other way around.
    **Set the API key field to any non-empty value, e.g. `no-key`.** Open
    WebUI (≤0.10.2) sends `Authorization: Bearer <key>` even when the key is
    empty; the resulting header value `Bearer` + trailing space is illegal
@@ -68,7 +84,7 @@ domain endpoint also carries a `current_datetime` tool (alongside
 | [Code Auditor](code-auditor.md) | gpt-oss:20b | web |
 | [General Auditor](general-auditor.md) | gpt-oss:20b | web |
 | [Hardware Builder](hardware-builder.md) | qwen3.6:35b-64k | hardware, project, web |
-| [KiCad Specialist](kicad-specialist.md) | qwen3.6:27b | project, web |
+| [KiCad Specialist](kicad-specialist.md) | qwen3.8:27b-64k | project, web |
 | [Marketing Guru](marketing-guru.md) | qwen3.6:35b-64k | web, outline, agents |
 | [Business Strategist](business-strategist.md) | qwen3.6:35b-64k | web, outline, agents |
 
