@@ -77,6 +77,7 @@ domain endpoint also carries a `current_datetime` tool (alongside
 | [Career Coach](career-coach.md) | qwen3.6:35b-64k | web, project |
 | [Research Assistant](research-assistant.md) | qwen3.5:9b | web |
 | [Ops Assistant](ops-assistant.md) | qwen3.5:9b | outline, inventree, plane, n8n, freescout, triggerdev, approvals, web |
+| [n8n Architect](n8n-architect.md) | qwen3.8:27b-64k | web, agents + n8n-mcp (direct, port 8104) |
 | [Knowledge Curator](knowledge-curator.md) | qwen3.5:9b | outline, web, approvals |
 | [Inventory Manager](inventory-manager.md) | qwen3.5:9b | inventree, approvals, web |
 | [Coding Assistant](coding-assistant.md) | qwen3.6:35b | web |
@@ -87,6 +88,22 @@ domain endpoint also carries a `current_datetime` tool (alongside
 | [KiCad Specialist](kicad-specialist.md) | qwen3.8:27b-64k | project, web |
 | [Marketing Guru](marketing-guru.md) | qwen3.6:35b-64k | web, outline, agents |
 | [Business Strategist](business-strategist.md) | qwen3.6:35b-64k | web, outline, agents |
+
+**n8n Architect** is the one preset that also carries a **non-mcp-tools**
+external tool connection: the standalone **n8n-mcp** server at
+`http://host.docker.internal:8104/mcp` (its own scoped MCP server — ~24 tools
+after its `DISABLED_TOOLS` set removes delete/credential/data-table/folder
+tools). Its API key field is the **real `N8NMCP_AUTH_TOKEN`** from
+`n8n-mcp/.env`, not the `no-key` placeholder mcp-tools accepts. Do not also
+attach the mcp-tools `n8n` domain to this preset — that would duplicate
+list/get/trigger and confuse tool selection. See `../../n8n-mcp/README.md`.
+It also carries the `agents` domain (unusual for a design-focused preset) —
+**since 2026-09-04 it is design-partner only**: discovery, brief
+clarification, small one-diff edits; every real build is `agent_dispatch`ed
+to `n8n_builder` rather than run in-chat, because this model only holds
+36/66 layers on the GPU and a build's context/validation loop drops it to a
+few tokens/sec (measured: ~3.4 tok/s past ~40k context — a single build turn
+took 20-30 min). See the preset doc's 2026-09-04 note.
 
 ### Baseline tool-environment block
 
@@ -111,7 +128,13 @@ format both sides; both keep warm memos in the registered `investments`
 project), career_coach ≈ Career Coach (both keep the master career profile
 and per-application drafts in the registered `career-profile` project),
 ops ≈ Ops Assistant, coder ≈ Coding Assistant,
-writer ≈ Knowledge Curator, studio ≈ Studio. For the narrower ones (Inventory Manager), scaffold an
+writer ≈ Knowledge Curator, studio ≈ Studio,
+n8n_builder ≈ n8n Architect, but not a mirrored pair like the others above —
+n8n Architect (the direct chat face) always dispatches real builds TO
+n8n_builder (a managed specialist of the manager, reached via Task
+Dispatcher or the preset's own `agents` connection); n8n_builder is where
+the build/validation loop actually runs, pinned to a slower but more
+structure-precise model since it has no chat deadline. For the narrower ones (Inventory Manager), scaffold an
 equivalent agent with `agent_create` if you want it in the agent workspace
 too.
 

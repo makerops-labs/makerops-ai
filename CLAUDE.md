@@ -12,10 +12,11 @@ makerops-core**, and keep any core-side reference local-only (core's
 
 | Service | Port | Notes |
 | --- | --- | --- |
-| openwebui | 8080 | Chat UI. Workspace-model presets live in `openwebui/contexts/*.md` (git source of truth; recreate in UI by hand). All presets start with `contexts/_baseline.md`. |
+| openwebui | 8080 | Chat UI. Workspace-model presets live in `openwebui/contexts/*.md` (git source of truth; recreate in UI by hand). All presets start with `contexts/_baseline.md`. Runs the upstream image + in-place source patches in `openwebui/patches/` (re-applied by `start.sh`; lost on image recreate). |
 | smolagents | 8090 | Agent workspace (Gradio). Agents in `smolagents/agents/`; code is bind-mounted — `docker restart smolagents` reloads it, rebuild only on lockfile change. **Check the job queue is idle first** (`GET :8099/healthz` → `jobs`): a restart kills any running job mid-step (`failed: worker restarted mid-job`). |
 | searxng | 8098 | Private metasearch; JSON API backs web tools. |
 | mcp-tools | 8099 | FastMCP tool server; per-domain endpoints `/mcp/<domain>/`; human write-approvals at `/approvals`; doc tree at `/context` (see below). |
+| n8n-mcp | 8104 | czlonkowski/n8n-mcp (HTTP mode) wrapping the makerops-core n8n public API with node schemas + templates + validation, so an LLM can *author* workflows. Feeds the "n8n Architect" preset (direct) and the `n8n_builder` persona (via the mcp-tools `n8nmcp` proxy domain). Destructive tools disabled in-process (`DISABLED_TOOLS`); **no** approval gate on this path — unlike the mcp-tools `n8n` domain (read + gated trigger), which is separate and unchanged. |
 | speech | 8091 STT / 8093 TTS | speaches (whisper) + Kokoro, CPU-only on purpose. |
 | trellis | 8094 | Image-to-3D (TRELLIS-image-large → GLB). GPU-heavy, start-on-demand only; serve.py is bind-mounted (restart to reload). Backs the `trellis` tool domain. |
 
@@ -77,6 +78,15 @@ debate turn mid-answer) — see the "Debate system" bullet below.
 - `tools_help` exists on EVERY domain endpoint → agents combining domains
   must merge with `agents/tools.get_domains_tools(*domains)` (dedup);
   plain concatenation crashes agent init on duplicate names.
+- **`n8nmcp` is a passthrough domain**: `mcp-tools/tools/n8nmcp.py` is a
+  `FastMCP.as_proxy` of the standalone `n8n-mcp` service (:8104), so the
+  smolagents `n8n_builder` persona can reach n8n-mcp's tools (`get_domains_tools`
+  only speaks to mcp-tools endpoints). Per-request proxy sessions — no
+  long-lived backend socket. If n8n-mcp is stopped, mcp-tools still starts (the
+  proxy is lazy) but `docs_tree._tools()` would 500 the whole `/context` tree
+  and every agent's `tools_help('')` — hence its per-domain try/except guard,
+  which degrades just that one domain to empty. Open WebUI's n8n Architect
+  preset connects to :8104 directly; only smolagents goes through the proxy.
 - `docker compose restart` does NOT re-read `.env` — use
   `docker compose -p <name> up -d`. Inline comments after `=` in `.env`
   become the value.
@@ -89,6 +99,20 @@ debate turn mid-answer) — see the "Debate system" bullet below.
   model (`qwen3-embedding:0.6b`), Audio (STT 8091 / TTS 8093), tool
   connections — the repo docs are recreate-from-git instructions
   (`docs/ai-setup-checklist.md` is the walkthrough).
+- **Open WebUI runtime patches** live in `openwebui/patches/` — in-place
+  edits to the upstream image's Python (no Dockerfile of our own), applied
+  by `start.sh` via `patches/apply.sh`, idempotent, **lost on `docker
+  compose up -d`/`pull`** (survive `restart`). Current patch:
+  `merge-model-toolids.py` — the image is pinned to a `vX.Y.Z` tag in
+  `openwebui/docker-compose.yml` (currently `v0.11.3`; bump deliberately —
+  the 0.11.x line has shipped migration regressions). Stock Open WebUI
+  (through 0.11.3) applies a Workspace Model's
+  default `skillIds` server-side but not `toolIds`, and the frontend only
+  sends `tool_ids` on an in-chat model switch, so a preset chat opened
+  directly (or a cloned/continued thread) runs **toolless**. The patch
+  mirrors the `skill_ids` merge in `middleware.py:process_chat_payload`.
+  If a preset reports "no tools", first check `apply.sh` ran since the
+  last recreate.
 - **Agent job queue is a shared directory**: `smolagents/data/smolagents/
   jobs`, bind-mounted into mcp-tools as `/agent-jobs`. mcp-tools
   (`agent_dispatch`) only creates `queued` records; the smolagents worker

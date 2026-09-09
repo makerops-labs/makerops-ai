@@ -31,8 +31,8 @@ manifest points at `local-icons/…` (copied above; also untracked). The
 refresh — only the routes template needs the container recreate.
 
 Routes added: `openwebui.localhost`, `agents.localhost`,
-`search.localhost`, `mcp.localhost`, `stt.localhost`, `tts.localhost`,
-`trellis.localhost`, `alexa.localhost` (alexa-bridge — local dev only,
+`search.localhost`, `mcp.localhost`, `n8n-mcp.localhost`, `stt.localhost`,
+`tts.localhost`, `trellis.localhost`, `alexa.localhost` (alexa-bridge — local dev only,
 separate from the public Cloudflare Tunnel route real Alexa traffic uses,
 see `../alexa-bridge/README.md`; reuses `smolagents.png` as its icon since
 there's no dedicated one).

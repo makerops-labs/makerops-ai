@@ -36,6 +36,17 @@ docker compose -p "$PROJECT" pull
 echo "Starting services..."
 docker compose -p "$PROJECT" up -d
 
+# ── Runtime patches ───────────────────────────────────────────────────────────
+# In-place edits to the upstream image's Python source (no Dockerfile of our
+# own). Lost on image recreate/pull, so re-applied on every start. Idempotent;
+# restarts the container only if a patch actually changed something.
+echo "Applying runtime patches..."
+for i in $(seq 1 30); do
+    docker ps --format '{{.Names}}' | grep -qx "$PROJECT" && break
+    sleep 1
+done
+"$SCRIPT_DIR/patches/apply.sh" || echo "  (patch step failed — see patches/README.md)" >&2
+
 OPENWEBUI_PORT=$(grep "^OPENWEBUI_PORT_HOST=" .env | cut -d= -f2-)
 OPENWEBUI_PORT=${OPENWEBUI_PORT:-8080}
 

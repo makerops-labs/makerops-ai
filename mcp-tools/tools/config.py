@@ -45,6 +45,14 @@ PLANE_WORKSPACE_SLUGS = [s.strip() for s in _env("PLANE_WORKSPACE_SLUGS").split(
 N8N_URL = _env("N8N_URL", "http://host.docker.internal:5678")
 N8N_API_KEY = _env("N8N_API_KEY")
 
+# n8n-mcp passthrough (tools/n8nmcp.py) — the standalone czlonkowski/n8n-mcp
+# service (../n8n-mcp/). Proxied so the smolagents n8n_builder persona can reach
+# its node-docs / validation / workflow-management tools (Open WebUI's n8n
+# Architect preset talks to it directly instead). Same values as ../n8n-mcp/.env.
+# Unset token = domain skipped at mount, same as every other optional domain.
+N8NMCP_URL = _env("N8NMCP_URL", "http://host.docker.internal:8104")
+N8NMCP_AUTH_TOKEN = _env("N8NMCP_AUTH_TOKEN")
+
 COMFYUI_URL = _env("COMFYUI_URL", "http://host.docker.internal:8188")
 COMFYUI_PUBLIC_URL = _env("COMFYUI_PUBLIC_URL", "http://comfyui.localhost")
 COMFYUI_CHECKPOINT = _env("COMFYUI_CHECKPOINT")

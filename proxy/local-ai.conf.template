@@ -39,6 +39,13 @@ server {
     location / { proxy_pass http://host.docker.internal:8099; }
 }
 
+# ── n8n-mcp — Agentic n8n Workflow Management ────────────────────────────────
+server {
+    listen      80;
+    server_name n8n-mcp.localhost ~^n8n-mcp\..+;
+    location / { proxy_pass http://host.docker.internal:8104; }
+}
+
 # ── Speech STT — speaches (faster-whisper) ───────────────────────────────────
 server {
     listen      80;

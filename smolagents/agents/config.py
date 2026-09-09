@@ -160,6 +160,15 @@ INVESTMENT_MAX_STEPS = int(os.environ.get("SMOLAGENTS_INVESTMENT_MAX_STEPS", "20
 # plus per-application research and drafting can take more round-trips than
 # the default specialist budget.
 CAREER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_CAREER_MAX_STEPS", "20"))
+# n8n builder (agents/n8n_builder_agent.py) — designs/validates/deploys n8n
+# workflows via the n8n-mcp tools, reached through the mcp-tools `n8nmcp`
+# passthrough domain (start ../n8n-mcp/ and set N8NMCP_AUTH_TOKEN in
+# mcp-tools/.env). Empty model = the resident general lead (no VRAM swap to
+# delegate to it). Budget above the default specialist (12): a build is discover
+# → configure → validate-each-node → validate-workflow → deploy → re-validate,
+# more round-trips than a one-shot task but still one sub-task, not an expedition.
+N8N_BUILDER_MODEL_ID = os.environ.get("SMOLAGENTS_N8N_BUILDER_MODEL_ID", "")
+N8N_BUILDER_MAX_STEPS = int(os.environ.get("SMOLAGENTS_N8N_BUILDER_MAX_STEPS", "20"))
 DEBATE_PERSONA_MAX_STEPS = int(os.environ.get("SMOLAGENTS_DEBATE_PERSONA_MAX_STEPS", "12"))
 
 # Hard cap on a single round file's size (chars) — a backstop, not the

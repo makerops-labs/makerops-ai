@@ -30,9 +30,9 @@ mcp = FastMCP(
 required_env = None  # writes to the bind mount, no token
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]{2,30}$")
-_VALID_DOMAINS = ("web", "outline", "inventree", "plane", "n8n", "comfyui",
-                  "freescout", "drawio", "triggerdev", "speech", "approvals",
-                  "project")
+_VALID_DOMAINS = ("web", "outline", "inventree", "plane", "n8n", "n8nmcp",
+                  "comfyui", "freescout", "drawio", "triggerdev", "speech",
+                  "approvals", "project")
 _CUSTOM_DIR = config.SMOLAGENTS_AGENTS_DIR / "custom"
 
 _TEMPLATE = string.Template('''"""$description
@@ -134,8 +134,8 @@ def agent_create(name: str, description: str, tool_domains: list[str],
                  model_role: str = "general", instructions: str = "") -> str:
     """WRITE ACTION — scaffolds a new smolagents agent module from a fixed
     template. name: snake_case, 3-31 chars. tool_domains: which MCP tool
-    domains it gets (web, outline, inventree, plane, n8n, comfyui, freescout,
-    drawio, triggerdev, speech, approvals, project). model_role: 'general' or
+    domains it gets (web, outline, inventree, plane, n8n, n8nmcp, comfyui,
+    freescout, drawio, triggerdev, speech, approvals, project). model_role: 'general' or
     'coding'. The file is created in the repo working tree for the user to
     review; the user is notified with a summary.
     Preconditions: name is snake_case, non-reserved; tool_domains all valid.

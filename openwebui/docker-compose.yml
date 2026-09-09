@@ -11,7 +11,10 @@
 
 services:
   openwebui:
-    image: ghcr.io/open-webui/open-webui:main
+    # Pinned for controlled upgrades (the 0.11.x line has shipped migration
+    # regressions — see patches/README.md). Bump deliberately; `start.sh`
+    # still `pull`s this tag each start.
+    image: ghcr.io/open-webui/open-webui:v0.11.3
     container_name: openwebui
     # WSL2 quirk: the host resolver (10.255.255.254) is unreachable from
     # bridge networks — explicit resolvers so web search can fetch result pages.

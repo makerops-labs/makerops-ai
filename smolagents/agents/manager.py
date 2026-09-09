@@ -24,6 +24,7 @@ from .context import with_baseline
 from .investment_agent import build_investment_agent
 from .maintainer_agent import build_maintainer_agent
 from .model import get_model
+from .n8n_builder_agent import build_n8n_builder_agent
 from .ops_agent import build_ops_agent
 from .researcher_agent import build_researcher_agent
 from .studio_agent import build_studio_agent
@@ -62,7 +63,11 @@ business and creative tasks for one user. Follow this procedure:
    note) you can hand to other team members verbatim. Investment, market,
    and opportunity-vs-risk analyses go to investment_strategist whole — it
    commissions its own research and keeps memos in the `investments`
-   project, so hand it the question, not pre-gathered facts. Write long,
+   project, so hand it the question, not pre-gathered facts. Building or
+   changing an n8n automation workflow goes to n8n_builder with a concrete
+   brief (trigger, steps, target systems, which credentials already exist in
+   n8n); it validates and deploys to the live n8n. Read-only "what workflows
+   exist / trigger this webhook" stays with ops. Write long,
    detailed sub-task briefs — each team member only knows what you tell
    it. Pass bulky source material via additional_args instead of pasting
    it into the task string. The same discipline applies to what comes
@@ -388,7 +393,7 @@ def build_manager_agent() -> CodeAgent:
                         build_ops_agent(), build_writer_agent(),
                         build_studio_agent(), build_audit_agent(),
                         build_maintainer_agent(), build_investment_agent(),
-                        build_career_agent(),
+                        build_career_agent(), build_n8n_builder_agent(),
                         *_build_custom_agents()],
         additional_authorized_imports=["json", "pathlib", "datetime"],
         instructions=with_baseline(_PROCEDURE),

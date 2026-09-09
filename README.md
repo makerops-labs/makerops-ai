@@ -56,6 +56,7 @@ bottom; each phase is independently useful. In outline:
 | [smolagents](https://github.com/huggingface/smolagents) | [8090](http://localhost:8090) | Agent workspace — planning, research, coding, ops, and audit agents with a Gradio UI |
 | [SearXNG](https://github.com/searxng/searxng) | [8098](http://localhost:8098) | Private metasearch — web-search backend for Open WebUI and mcp-tools |
 | MCP Tools | [8099](http://localhost:8099/healthz) | Shared MCP tool server — read/write tools for the business stack with human write-approvals |
+| [n8n-mcp](n8n-mcp/) | [8104](http://localhost:8104/health) | MCP server for agentic n8n workflow management (czlonkowski/n8n-mcp) — wraps the makerops-core n8n public API with node schemas, templates, and validation. Feeds the "n8n Architect" preset (direct) and the `n8n_builder` persona (via an mcp-tools `n8nmcp` proxy domain). Destructive tools disabled in-process; no approval gate on this path |
 | [Speech](speech/) | [8091](http://localhost:8091) STT / [8093](http://localhost:8093) TTS | speaches (faster-whisper) speech-to-text + Kokoro text-to-speech, CPU-only |
 | [TRELLIS](trellis/) | [8094](http://localhost:8094/healthz) | Image-to-3D generation (GLB) — GPU-heavy, start-on-demand only |
 | [redeploy](redeploy/) | [8101](http://localhost:8101/healthz) | Docker-socket-scoped restart proxy — deploys approved self-improvement code changes |

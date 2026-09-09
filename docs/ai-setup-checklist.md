@@ -40,7 +40,8 @@ phase is independently useful, so you can stop at any point and come back.
       cookie). Check `curl -s http://localhost:8099/healthz | jq` — only
       `web`, `approvals`, `comfyui`, `drawio`, `agents`, `speech`, `trellis`
       mount until you add tokens below (the last two degrade gracefully
-      while their backing service is stopped).
+      while their backing service is stopped). `n8nmcp` mounts only after
+      you set `N8NMCP_AUTH_TOKEN` (§5k).
 - [ ] Enable the private AI routes on makerops-core's reverse proxy so
       `search.localhost` and `mcp.localhost` resolve: install the drop-in
       template per [proxy/README.md](../proxy/README.md). (The public
@@ -64,6 +65,7 @@ domain should appear in `domains`).
       segment of your workspace URL, e.g. `http://localhost:8100/<slug>/`).
       Verify: `curl -s -H "X-API-Key: $KEY" http://localhost:8100/api/v1/workspaces/<slug>/projects/ | jq`.
 - [ ] **n8n** — Settings → **n8n API** → Create an API key → `N8N_API_KEY`.
+      Reuse this same key for n8n-mcp (§5k) — it is the same n8n instance.
 - [ ] **trigger.dev** — project → **API Keys** → secret key (`tr_...`) →
       `TRIGGERDEV_SECRET_KEY`.
 - [ ] **FreeScout** (optional, paid) — install the
@@ -486,6 +488,98 @@ point is being pinged when the team needs you.
 - [ ] Engagements are long unattended model time: stop `trellis` first
       (same 35b RAM gotcha as §5h debates), and expect hours wall-clock
       for a real plan.
+
+## 5k. Agentic n8n workflow management (n8n-mcp)
+
+The [czlonkowski/n8n-mcp](https://github.com/czlonkowski/n8n-mcp) server
+(a new compose project, `n8n-mcp/`) wraps the n8n public REST API (§2) with
+the full node catalog, ~2700 templates, and multi-level validation, so an
+LLM can *design and deploy* workflows — not just trigger them. Two faces:
+the Open WebUI **n8n Architect** preset (connects directly), and the
+smolagents **n8n_builder** persona (a managed specialist of the manager,
+via an mcp-tools passthrough domain). Destructive tools (delete workflow,
+credentials, data tables, folders, version rollback) are disabled on the
+n8n-mcp server — this path has **no** approval gate, unlike the mcp-tools
+`n8n` domain (which stays read + gated-trigger only).
+
+**Design/build split (2026-09-04):** a full build's search-configure-validate
+loop pushes context past 40-50k tokens, and this hardware can't run that
+interactively at a usable speed on a dense enough model (measured: `qwen3.8:27b-64k`
+dropped to ~3.4 tok/s once the GPU could only hold 36/66 layers — a single
+build turn took 20-30 min, reading as "started but never finishes"). So n8n
+Architect is now a **design partner only** — discovery, clarification, small
+one-diff edits — and **always dispatches full builds to `n8n_builder`**,
+which has no chat deadline. Both use the same disabled-tool set. See
+[openwebui/contexts/n8n-architect.md](../openwebui/contexts/n8n-architect.md)'s
+2026-09-04 note for the measurements.
+
+- [ ] Start it: `cd n8n-mcp && cp .env.example .env`, paste `N8N_API_KEY`
+      (the same value as `mcp-tools/.env`), then `./start.sh` — it generates
+      `N8NMCP_AUTH_TOKEN`. Check `curl -s http://localhost:8104/health`.
+- [ ] Verify the disabled-tool set: run the `tools/list` curl from
+      [n8n-mcp/README.md](../n8n-mcp/README.md) and confirm none of
+      `n8n_delete_workflow`, `n8n_manage_credentials`, `n8n_manage_datatable`,
+      `n8n_manage_folders`, `n8n_workflow_versions` appear. If this image
+      version bundles them differently, adjust `N8NMCP_DISABLED_TOOLS` /
+      `N8NMCP_DISABLED_TOOL_OPERATIONS` in `n8n-mcp/.env` and
+      `docker compose -p n8n-mcp up -d`.
+- [ ] `WEBHOOK_SECURITY_MODE=permissive` is required — `host.docker.internal`
+      is a private gateway IP and n8n-mcp validates `N8N_API_URL` through the
+      same SSRF gate (`strict`/`moderate` reject it). Single-user LAN.
+- [ ] Proxy route: add the `n8n-mcp.localhost` server block from
+      `proxy/local-ai.conf.template` and recreate the name-proxy
+      ([proxy/README.md](../proxy/README.md)).
+- [ ] Open WebUI: **Admin Settings → External Tools → Add Connection** →
+      **MCP (Streamable HTTP)** → `http://host.docker.internal:8104/mcp` →
+      **API key = the real `N8NMCP_AUTH_TOKEN`** (not `no-key` — this server
+      checks it). Then create the **n8n Architect** context model per
+      [openwebui/contexts/n8n-architect.md](../openwebui/contexts/n8n-architect.md):
+      connections `mcp/web/` + `mcp/agents/` (for dispatching to `n8n_builder`)
+      + the n8n-mcp connection, base `qwen3.8:27b-64k`, native function
+      calling, **`think: false`** and **`keep_alive: 30m`** in params, native
+      capabilities off. Do **not** also attach the mcp-tools `n8n` domain.
+      On the n8n-mcp connection, set the **function filter** to
+      `!n8n_create_workflow,!n8n_update_full_workflow,!n8n_update_partial_workflow,!n8n_deploy_template,!validate_workflow,!validate_node,!n8n_autofix_workflow`
+      so the preset is read/discovery + dispatch only — it can't be lured
+      into the build loop, which on this hardware (27b-64k, ~36/66 layers on
+      the GPU, ~3 tok/s) with thinking on blew the 30-min Ollama timeout on a
+      single turn (chat `e5b8feae`, 2026-09-06). Thinking off + no build
+      tools = ~1-min turns that end in an `agent_dispatch` to `n8n_builder`.
+      - The **`patches/merge-model-toolids.py`** runtime patch (applied by
+        `openwebui/start.sh` / `patches/apply.sh`) is what makes a preset's
+        attached tools actually reach the model — stock Open WebUI (through 0.11.3) only
+        sends a model's default tools when you switch models *inside* the chat,
+        so a preset opened directly runs toolless. If n8n Architect (or any
+        preset) says it has no tools, check `patches/apply.sh` ran after the
+        last image recreate.
+- [ ] smolagents persona: put `N8NMCP_URL` + `N8NMCP_AUTH_TOKEN` (same value)
+      in `mcp-tools/.env`, then `cd mcp-tools && docker compose -p mcp-tools
+      up -d` (recreate — `.env` changed; check `:8099/healthz | jq .jobs` is
+      idle first). Confirm `curl -s :8099/healthz | jq .domains` includes
+      `"n8nmcp"`. Then `docker restart smolagents` (job queue idle) so the
+      worker builds `n8n_builder` into the manager's team — confirm with
+      `agent_list` from Task Dispatcher.
+- [ ] Pin `SMOLAGENTS_N8N_BUILDER_MODEL_ID=qwen3.8:27b-64k` in
+      `smolagents/.env` (not optional — the empty-default general lead,
+      `qwen3.6:35b-64k`, is even heavier; this agent needs a `docker compose -p
+      smolagents up -d` to pick up a `.env` change, a plain `restart` won't).
+- [ ] **Dry-run A** (design → dispatch): in n8n Architect, ask for a workflow
+      — *"Create an inactive workflow 'ping-test': a Webhook trigger on path
+      `ping-test` that responds with JSON `{"pong": true}`."* Expect it to do
+      light discovery, assemble a brief, and `agent_dispatch` to `n8n_builder`
+      rather than building inline — it should NOT call `get_node(detail='full')`
+      or configure/validate nodes itself. `agent_job_result` → the fixed
+      report (`**Status:** created` + `**Validation:**` line). Confirm in the
+      n8n UI: `ping-test` exists, inactive, 2 nodes. `docker logs n8n-mcp`
+      shows the `tools/call` entries and no delete/credential calls.
+- [ ] **Dry-run B** (background): from Task Dispatcher, *"Have the n8n
+      builder create an inactive workflow 'agent-ping': Manual Trigger → Set
+      node that outputs `{"ok": true}`."* `agent_job_result` → the fixed
+      report with `**Status:** created` + a `**Validation:**` line + workflow
+      id. n8n UI: `agent-ping` exists, inactive.
+- [ ] **Negative check**: ask either to "delete the agent-ping workflow" →
+      it reports blocked / "no delete tool — do it in the n8n UI", makes no
+      destructive call.
 
 ## 6. Write notifications (recommended)
 

@@ -1,0 +1,70 @@
+# n8n-mcp — MCP server for agentic n8n workflow management (czlonkowski/n8n-mcp)
+# Project name: n8n-mcp  (managed by start.sh / stop.sh)
+#
+# Exposes:
+#   8104/tcp — Streamable-HTTP MCP endpoint at /mcp (bearer auth), health at /health
+#
+# Wraps the existing makerops-core n8n instance's public REST API
+# (host.docker.internal:5678 → /api/v1) with node-documentation, template,
+# validation, and workflow-management tools so an LLM can DESIGN and DEPLOY
+# workflows — not just trigger them.
+#
+# Consumers:
+#   - Open WebUI "n8n Architect" preset — connects here DIRECTLY (native MCP).
+#   - smolagents "n8n_builder" persona — via the mcp-tools `n8nmcp` proxy domain
+#     (get_domain_tools only speaks to mcp-tools endpoints).
+#
+# Write-safety: destructive tools (delete workflow, credentials, data tables,
+# folders, version rollback) are disabled IN-PROCESS via DISABLED_TOOLS /
+# DISABLED_TOOL_OPERATIONS. There is NO approval gate on this path — unlike the
+# mcp-tools `n8n` domain (read + approval-gated webhook trigger), which is a
+# separate capability and stays as-is.
+#
+# Stateless: n8n-mcp only proxies the n8n REST API. No data volume.
+
+services:
+  n8n-mcp:
+    image: ghcr.io/czlonkowski/n8n-mcp:latest
+    container_name: n8n-mcp
+    # WSL2 quirk: the host resolver (10.255.255.254) is unreachable from bridge
+    # networks — explicit resolvers so the image's own outbound calls resolve.
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    env_file: .env
+    environment:
+      TZ: "${TZ:-America/Chicago}"
+      MCP_MODE: http
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      # Bearer token clients must present (openssl rand -base64 32); generated
+      # by start.sh on first run.
+      AUTH_TOKEN: "${N8NMCP_AUTH_TOKEN}"
+      # Target n8n — the existing makerops-core n8n, reached over the Docker
+      # host gateway. Its public REST API is already enabled.
+      N8N_API_URL: "${N8N_API_URL:-http://host.docker.internal:5678}"
+      N8N_API_KEY: "${N8N_API_KEY}"
+      # host.docker.internal resolves to a private/gateway IP, and n8n-mcp's
+      # SSRF guard validates N8N_API_URL through the same check that gates
+      # workflow webhook URLs. 'strict' blocks private IPs; 'moderate' allows
+      # only loopback — so 'permissive' is required here for n8n-mcp to accept
+      # N8N_API_URL at all. Single-user homelab LAN — acceptable. See README.
+      WEBHOOK_SECURITY_MODE: "${N8NMCP_WEBHOOK_SECURITY_MODE:-permissive}"
+      LOG_LEVEL: "${N8NMCP_LOG_LEVEL:-info}"
+      # Destructive tools removed entirely; delete branches of bundled tools
+      # removed. Allowed: read + validate + create + diff-based (partial)
+      # update + webhook trigger. Re-verify the exact tool names against a
+      # running server's tools/list — see README and .env.example.
+      DISABLED_TOOLS: "${N8NMCP_DISABLED_TOOLS}"
+      DISABLED_TOOL_OPERATIONS: "${N8NMCP_DISABLED_TOOL_OPERATIONS}"
+    ports:
+      - "${N8NMCP_PORT_HOST:-8104}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/health || wget -q -O- http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped

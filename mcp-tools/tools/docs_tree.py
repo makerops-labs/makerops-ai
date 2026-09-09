@@ -54,15 +54,26 @@ class DocsTree:
         self._cache: dict[str, str | None] = {}
 
     async def _tools(self) -> dict[str, dict]:
-        """{domain: {tool_name: Tool}} from live introspection, help tool excluded."""
-        if self._inventory is None:
-            self._inventory = {
-                name: {t_name: tool
-                       for t_name, tool in (await sub.get_tools()).items()
-                       if t_name != HELP_TOOL}
-                for name, sub in self._domains.items()
-            }
-        return self._inventory
+        """{domain: {tool_name: Tool}} from live introspection, help tool excluded.
+
+        A proxy domain (n8nmcp) whose backend is unreachable yields ``{}`` rather
+        than raising out of here — this method backs ``tools_help('')`` and the
+        smolagents baseline context for *every* agent, so one down backend must
+        not take the whole tree with it. Not memoized while any domain errored,
+        so the tree self-heals once the backend returns."""
+        if self._inventory is not None:
+            return self._inventory
+        inventory, complete = {}, True
+        for name, sub in self._domains.items():
+            try:
+                tools = await sub.get_tools()
+                inventory[name] = {t_name: tool for t_name, tool in tools.items()
+                                   if t_name != HELP_TOOL}
+            except Exception:  # noqa: BLE001 — a down proxy backend must not
+                inventory[name], complete = {}, False  # break tools_help globally
+        if complete:
+            self._inventory = inventory
+        return inventory
 
     async def render(self, path: str) -> str | None:
         """Markdown for the node at ``path``; None for unknown paths."""
@@ -75,16 +86,22 @@ class DocsTree:
             if len(parts) == 2:
                 return self._render_guidance_doc(parts[1])
             return None
-        if path not in self._cache:
-            if len(parts) == 0:
-                self._cache[path] = await self._render_root()
-            elif len(parts) == 1:
-                self._cache[path] = await self._render_domain(parts[0])
-            elif len(parts) == 2:
-                self._cache[path] = await self._render_tool(parts[0], parts[1])
-            else:
-                self._cache[path] = None
-        return self._cache[path]
+        if path in self._cache:
+            return self._cache[path]
+        if len(parts) == 0:
+            rendered = await self._render_root()
+        elif len(parts) == 1:
+            rendered = await self._render_domain(parts[0])
+        elif len(parts) == 2:
+            rendered = await self._render_tool(parts[0], parts[1])
+        else:
+            rendered = None
+        # Only memoize once a full healthy introspection was cached — otherwise a
+        # node rendered while a proxy backend (n8nmcp) was down would stick with
+        # its "unavailable" text until the container is recreated.
+        if self._inventory is not None or rendered is None:
+            self._cache[path] = rendered
+        return rendered
 
     # ── Guidance branch ────────────────────────────────────────────────────────
 
@@ -206,6 +223,12 @@ couple of tool calls suffice; dispatch when it does not.
             return None
         sub = self._domains[domain]
         blurb = getattr(sub, "instructions", None) or f"Tools for {domain}."
+        if not tools[domain]:
+            return (f"# Domain `{domain}`\n\n{blurb}\n\n"
+                    f"_This domain is mounted but its backend is not responding "
+                    f"right now — its tools are temporarily unavailable. "
+                    f"(For `n8nmcp`: start `n8n-mcp/start.sh`.)_\n\n"
+                    f"{self._nav(up='')}")
         lines = []
         for t_name in sorted(tools[domain]):
             tool = tools[domain][t_name]

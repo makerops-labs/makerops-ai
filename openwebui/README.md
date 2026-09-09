@@ -98,6 +98,13 @@ To connect (Open WebUI ships native MCP streamable-HTTP support):
    **Function calling: Native** in the model's Advanced Params for reliable
    tool use.
 
+> A model's **default tools** (set in Workspace → Models → Tools) only reach
+> the model in stock Open WebUI (through 0.11.3) when you switch models *inside the
+> chat* — a preset chat opened directly, or a cloned/continued thread, runs
+> with no tools. The `patches/merge-model-toolids.py` runtime patch (applied
+> by `start.sh`) fixes this by mirroring how Open WebUI already handles a
+> model's default skills. See [patches/README.md](patches/README.md).
+
 If your Open WebUI build predates native MCP support, run
 [mcpo](https://github.com/open-webui/mcpo) in front of mcp-tools and add it as
 an OpenAPI tool server instead.
@@ -180,9 +187,10 @@ Interactive full teardown: shows what will be removed, prompts for confirmation,
 | --- | --- |
 | `docker-compose.yml` | Single-container stack definition |
 | `.env.example` | Configuration template |
-| `start.sh` | Generate secrets, pull image, and start |
+| `start.sh` | Generate secrets, pull image, start, and apply `patches/` |
 | `stop.sh` | Stop (volume preserved) |
 | `teardown.sh` | Full wipe with confirmation |
+| `patches/` | In-place source patches to the upstream image (re-applied on every `start.sh`; lost on image recreate). See [patches/README.md](patches/README.md). |
 
 ---
 
@@ -191,7 +199,7 @@ Interactive full teardown: shows what will be removed, prompts for confirmation,
 ```text
 Browser / API clients
   └─► localhost:8080  (TCP) → Open WebUI
-          └─► openwebui  (ghcr.io/open-webui/open-webui:main)
+          └─► openwebui  (ghcr.io/open-webui/open-webui:v0.11.3)
                 ├─► host.docker.internal:11434  → Ollama REST API
                 └─► openwebui data volume  (/app/backend/data)
                       ├─► SQLite database  (users, chats, settings)
@@ -217,13 +225,24 @@ docker exec -it openwebui bash
 
 ### Upgrade
 
+The image is pinned to a `vX.Y.Z` tag in `docker-compose.yml` (the 0.11.x line
+has shipped migration regressions, so upgrades are deliberate). To upgrade:
+
 ```bash
-./stop.sh
-docker pull ghcr.io/open-webui/open-webui:main
-./start.sh
+# 1. bump the `image:` tag in docker-compose.yml to the new release
+# 2. back up the DB (root-owned; do it through a container):
+docker run --rm -v "$PWD/data/openwebui:/d" alpine \
+  cp /d/webui.db /d/webui.db.bak-$(date +%Y%m%d)
+# 3.
+./stop.sh && ./start.sh
 ```
 
-Data in the volume is preserved across upgrades.
+Then check `docker logs openwebui` for Alembic migration errors and confirm
+`curl -s localhost:8080/api/version`. Data in the volume is preserved across
+upgrades. `start.sh` re-applies the `patches/` after the pull; if you upgrade
+by hand, run `patches/apply.sh` yourself (or presets lose their tools — see
+[patches/README.md](patches/README.md)). On a bad upgrade, restore the DB
+backup and revert the tag.
 
 ### Reset admin password
 

@@ -15,6 +15,7 @@ DOMAINS: dict[str, str | None] = {
     "inventree": "INVENTREE_API_TOKEN",
     "plane": "PLANE_API_KEY",
     "n8n": "N8N_API_KEY",
+    "n8nmcp": "N8NMCP_AUTH_TOKEN",
     "comfyui": None,
     "freescout": "FREESCOUT_API_KEY",
     "drawio": None,

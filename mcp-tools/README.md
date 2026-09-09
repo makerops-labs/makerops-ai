@@ -62,7 +62,8 @@ static baseline block ([openwebui/contexts/_baseline.md](../openwebui/contexts/_
 | `outline` | search/get/list, create/update documents | `OUTLINE_API_TOKEN` |
 | `inventree` | search/get parts, list stock, create part, adjust stock | `INVENTREE_API_TOKEN` |
 | `plane` | list projects/issues, get issue, create/update issue, comment | `PLANE_API_KEY` + `PLANE_WORKSPACE_SLUG` |
-| `n8n` | list workflows/executions, activate, run webhook | `N8N_API_KEY` |
+| `n8n` | list workflows/executions, activate, run webhook (approval-gated) | `N8N_API_KEY` |
+| `n8nmcp` | passthrough proxy of the standalone [n8n-mcp](../n8n-mcp/) service (:8104): node docs, templates, validation, workflow create / diff-based update — so the smolagents `n8n_builder` persona can reach it. Destructive + execution tools disabled on the n8n-mcp side; **no** approval gate here. Open WebUI's n8n Architect preset connects to :8104 directly instead | `N8NMCP_AUTH_TOKEN` (+ `n8n-mcp` service running) |
 | `comfyui` | `comfyui_generate_image` | makerops-core/ai/comfyui running (GPU) |
 | `freescout` | list/get conversations, reply (draft-first), create conversation | `FREESCOUT_API_KEY` (paid API & Webhooks module) |
 | `drawio` | `drawio_create_diagram_link` | — |
