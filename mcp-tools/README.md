@@ -113,12 +113,20 @@ Update tools require a `changes_summary` list from the model, and document
 updates include a unified diff in the review UI. Models can poll
 `approval_status` but **cannot approve** — approval only happens in the UI.
 
-Tune trust over time in `.env`:
+Tune trust over time in `.env` (comments go on their own line — `env_file`
+would otherwise make the comment part of the value):
 
 ```text
-APPROVAL_GATE_EXEMPT=comfyui,inventree.inventree_adjust_stock   # gate → notify
-APPROVAL_FORCE_GATE=outline                                     # notify → gate
+# gate → notify
+APPROVAL_GATE_EXEMPT=comfyui,inventree.inventree_adjust_stock
+# notify → gate
+APPROVAL_FORCE_GATE=outline
 ```
+
+The approvals UI (`/approvals`, `/inbox`) requires `APPROVALS_TOKEN`, which
+`start.sh` generates on first run. If it is ever unset, the UI **fails
+closed**: it answers 503 and nothing can be approved until a token is set
+(pending actions stay queued).
 
 Apply `.env` changes with `docker compose -p mcp-tools up -d` (recreate).
 
@@ -271,9 +279,9 @@ uv run pytest            # from mcp-tools/; pytest is a dev-only dependency
 
 | File | What it proves |
 | --- | --- |
-| `tests/test_policy.py` | `delete`/`effect` actions and overwrites of user-owned content are held as `PENDING APPROVAL` and never execute before approval; additive `create`s execute and notify; unknown action kinds fall back to gate; unregistered tools are refused; `APPROVAL_GATE_EXEMPT` / `APPROVAL_FORCE_GATE` overrides apply per domain or per tool and can never exempt a delete; approve executes exactly once, reject never executes; approvals older than `APPROVAL_TTL_HOURS` expire and cannot execute. |
+| `tests/test_policy.py` | `delete`/`effect` actions and overwrites of user-owned content are held as `PENDING APPROVAL` and never execute before approval; additive `create`s execute and notify, and a crashing executor is audited as `action.failed` instead of reported as success; unknown action kinds fall back to gate; unregistered tools are refused; `APPROVAL_GATE_EXEMPT` / `APPROVAL_FORCE_GATE` overrides apply per domain or per tool and can never exempt a delete; approve executes exactly once, reject never executes; approvals older than `APPROVAL_TTL_HOURS` expire and cannot execute. |
 | `tests/test_tool_routing.py` | Every tool documented as `WRITE ACTION` routes through `policy.apply_policy` (static AST check, so a new tool can't silently bypass the gate); every `action_kind` is a literal; a real tool (`inventree_adjust_stock`) is held until approved. |
-| `tests/test_approvals_http.py` | `/approvals` and the approve/reject endpoints refuse requests without a valid `APPROVALS_TOKEN` (query param or cookie) and change nothing when refused. Also pins one known gap: with `APPROVALS_TOKEN` empty, the endpoints are open. |
+| `tests/test_approvals_http.py` | `/approvals` and the approve/reject endpoints refuse requests without a valid `APPROVALS_TOKEN` (query param or cookie) and change nothing when refused; with no token configured they fail closed (503); unknown verbs are refused (400). |
 
 The suite was mutation-checked: breaking the gate for `effect` actions,
 ignoring the TTL, letting exemptions apply to deletes, or allowing a second
