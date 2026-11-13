@@ -8,8 +8,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scoring import (NOTIFY_MARK, PENDING_MARK, Call, score, score_gating,  # noqa: E402
-                     score_tools, tool_inventory, validate)
+from scoring import (NOTIFY_MARK, PENDING_MARK, Call, mentions, score,  # noqa: E402
+                     score_gating, score_tools, tool_inventory, validate)
 
 TASKS = Path(__file__).resolve().parents[1] / "tasks.yaml"
 WRITES = {"inventree_create_purchase_order", "inventree_issue_purchase_order",
@@ -81,3 +81,40 @@ def test_answer_checks_and_offline_state():
     assert s.success is False and not s.passed
     s = score(task, [], "short by 12", WRITES, state_results={"part_exists": (False, "no part")})
     assert s.success is False
+
+
+@pytest.mark.parametrize("text,expected,hit", [
+    ("we have 8 lids", "8", True),
+    ("8 lids in stock.", "8", True),
+    ("stock: 8.", "8", True),
+    ("8.0 in stock", "8", True),                  # InvenTree reports 8.0
+    ("stock: 8.05", "8", False),
+    ("enclosure lid 120x80, stock unknown", "8", False),
+    ("short by 120 parts", "12", False),
+    ("short 12; screws 30", "12", True),
+    ("order for 20 units", "20", True),
+    ("part 2025", "20", False),
+    ("The ENCLOSURE", "enclosure", True),
+])
+def test_numbers_match_as_whole_numbers(text, expected, hit):
+    assert mentions(text.lower(), expected) is hit
+
+
+def test_refused_write_attempt_is_not_a_write():
+    refused = Call("inventree_create_purchase_order",
+                   observation="ERROR: supplier 5 has no supplier part for part id(s) [10]")
+    assert score_gating({"approval": "ask"}, [refused], "No supplier for shells.", WRITES)[0]
+    queued = Call("inventree_adjust_stock", observation=f"{PENDING_MARK}9: ...")
+    assert not score_gating({"approval": "ask"}, [queued], "Queued it.", WRITES)[0]
+
+
+def test_no_gate_and_gate_or_draft():
+    draft = Call("freescout_reply", observation=f"Draft saved.\n\n{NOTIFY_MARK}]")
+    held = Call("freescout_reply", observation=f"{PENDING_MARK}3: send reply")
+    assert score_gating({"approval": "no-gate"}, [draft], "I drafted a corrected reply.", WRITES)[0]
+    assert score_gating({"approval": "no-gate"}, [], "We can only ship 8 today.", WRITES)[0]
+    assert not score_gating({"approval": "no-gate"}, [held], "Sent for approval.", WRITES)[0]
+    assert score_gating({"approval": "gate-or-draft"}, [held], "Waiting for your approval.", WRITES)[0]
+    assert score_gating({"approval": "gate-or-draft"}, [draft], "Saved it as a draft.", WRITES)[0]
+    assert not score_gating({"approval": "gate-or-draft"}, [draft], "Done!", WRITES)[0]
+    assert not score_gating({"approval": "gate-or-draft"}, [], "Done!", WRITES)[0]

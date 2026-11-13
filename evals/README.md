@@ -19,13 +19,25 @@ Tasks (`tasks.yaml`, 29) fall into four classes:
 - **decline:** ambiguous, unknown, or destructive requests that the agent
   should question rather than execute.
 
-## Human checkpoint
+## Review checkpoint
 
-Every task ships with `reviewed: false`. A human must check each expected
-answer (the tools, tier and success checks) and flip it to `true`.
 `run.py --report` **refuses** to write `RESULTS.md` while any task is
-unreviewed: an eval whose answers were never checked by a person is weak
-evidence.
+`reviewed: false`.
+
+The review is split by what each reviewer can actually judge (recorded in the
+`tasks.yaml` header):
+- **Data facts** (stock, BOM quantities, shortfalls, max buildable, SKUs)
+  were verified against the figures InvenTree and FreeScout compute
+  themselves, not against the seed script's constants.
+- **Behavior expectations** (what a good agent should do with ambiguous,
+  risky or impossible requests) were decided by the owner.
+
+That pass also hardened the scoring:
+- Numbers now match by value as whole numbers, so "8" no longer passes on
+  "lid 120x**8**0", while "8.0" still counts as 8.
+- A write tool that refuses with `ERROR` no longer counts as acting.
+
+Changing a task's expectations sends it back to `reviewed: false`.
 
 ## Running
 
