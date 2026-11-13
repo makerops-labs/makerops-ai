@@ -66,9 +66,59 @@ def dry_run(doc: dict) -> int:
 
 # ── live run helpers ─────────────────────────────────────────────────────────
 
-def _demo(script: str) -> None:
-    subprocess.run([sys.executable, str(ROOT / "demo" / script)], check=True,
-                   stdout=subprocess.DEVNULL)
+class SetupError(RuntimeError):
+    """The demo reset/seed failed: an infrastructure problem, not a model one."""
+
+
+def _demo(script: str, attempts: int = 3, backoff_s: float = 15) -> None:
+    """Run demo/<script>, retrying transient failures (a FreeScout timeout
+    once aborted a whole model's run). Raises SetupError if all attempts fail."""
+    for n in range(1, attempts + 1):
+        proc = subprocess.run([sys.executable, str(ROOT / "demo" / script)],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            return
+        last = (proc.stderr or "").strip().splitlines()[-1:] or ["no stderr"]
+        print(f"  demo/{script} failed (attempt {n}/{attempts}): {last[0]}", flush=True)
+        if n < attempts:
+            time.sleep(backoff_s * n)
+    raise SetupError(f"demo/{script} failed {attempts} times: {last[0]}")
+
+
+def _results_path(model: str, resume: bool) -> Path:
+    """Today's results file, or with --resume the newest existing one for the model."""
+    safe = model.replace(":", "_").replace("/", "_")
+    if resume:
+        existing = sorted(p for p in RESULTS_DIR.glob(f"????-??-??-{safe}.json")
+                          if p.name[11:] == f"{safe}.json")
+        if existing:
+            return existing[-1]
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    path = RESULTS_DIR / f"{stamp}-{safe}.json"
+    if not resume and path.exists():  # a fresh run never silently destroys one
+        path.replace(path.with_name(path.name + ".prev"))
+    return path
+
+
+def _resumable_rows(path: Path, model: str, task_ids: set[str]) -> list[dict]:
+    """Scored rows from a previous run of the same model and current tasks.
+    Infra errors are dropped so they are retried."""
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text())
+    if data.get("model") != model:
+        raise SystemExit(f"{path.name} holds results for {data.get('model')!r}, not {model!r}")
+    return [r for r in data.get("tasks", [])
+            if r.get("id") in task_ids and not r.get("infra_error")]
+
+
+def _save(path: Path, model: str, rows: list[dict]) -> None:
+    """Write after every task (atomically), so a crash loses at most one task."""
+    RESULTS_DIR.mkdir(exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"model": model, "date": path.name[:10], "agent": "ops",
+                               "tasks": rows}, indent=1))
+    tmp.replace(path)
 
 
 def _env_file(path: Path) -> dict:
@@ -219,7 +269,7 @@ def _named(entries):
         yield (e, None) if isinstance(e, str) else next(iter(e.items()))
 
 
-def run_live(doc: dict, model: str, only: set[str] | None) -> Path:
+def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False) -> Path:
     os.environ.setdefault("SMOLAGENTS_MCP_URL", "http://localhost:8099")
     os.environ.setdefault("OLLAMA_API_BASE", "http://localhost:11434/v1")
     sys.path.insert(0, str(ROOT / "smolagents"))
@@ -230,13 +280,24 @@ def run_live(doc: dict, model: str, only: set[str] | None) -> Path:
     _, write_tools = tool_inventory()
     agent = build_ops_agent()
 
-    rows = []
+    out = _results_path(model, resume)
+    rows = _resumable_rows(out, model, {t["id"] for t in doc["tasks"]}) if resume else []
+    done = {r["id"] for r in rows}
+    if done:
+        print(f"resuming {out.relative_to(ROOT)}: {len(done)} task(s) already scored")
     for task in doc["tasks"]:
-        if only and task["id"] not in only:
+        if (only and task["id"] not in only) or task["id"] in done:
             continue
         print(f"- {task['id']} …", flush=True)
-        _demo("reset.py")
-        _demo("seed.py")
+        try:
+            _demo("reset.py")
+            _demo("seed.py")
+        except SetupError as exc:
+            rows.append({"id": task["id"], "class": task["class"], "infra_error": str(exc),
+                         "passed": None, "reasons": [f"not run: {exc}"]})
+            _save(out, model, rows)
+            print(f"  SKIPPED (infrastructure): {exc}", flush=True)
+            continue
         state = State()
         for name, _ in _named(task.get("setup")):
             state.setup(name)
@@ -246,7 +307,10 @@ def run_live(doc: dict, model: str, only: set[str] | None) -> Path:
         try:
             answer = str(agent.run(task["prompt"], reset=True,
                                    additional_args={"workspace": str(RESULTS_DIR)}))
-        except Exception as exc:  # noqa: BLE001 — a crash is a scored failure
+        except Exception as exc:  # noqa: BLE001
+            # The model's own mistakes are handled inside agent steps; an
+            # exception escaping run() is the stack failing (Ollama killed,
+            # connection lost), so it is an infra error, retried on --resume.
             answer, error = "", f"{type(exc).__name__}: {exc}"
         latency = time.monotonic() - t0
         calls = _capture(agent)
@@ -257,26 +321,31 @@ def run_live(doc: dict, model: str, only: set[str] | None) -> Path:
         called = {c.name for c in calls}
         _reject({i for i, tool in _pending().items()
                  if i not in before and tool in called})
-        s = score(task, calls, answer, write_tools, state_results)
         if error:
-            s.reasons.insert(0, f"agent error: {error}")
+            rows.append({"id": task["id"], "class": task["class"],
+                         "infra_error": f"agent run aborted: {error}"[:500], "passed": None,
+                         "latency_s": round(latency, 1),
+                         "calls": [{"name": c.name, "arguments": c.arguments} for c in calls],
+                         "reasons": [f"not scored: {error}"[:500]]})
+            _save(out, model, rows)
+            print(f"  SKIPPED (infrastructure, {latency:.0f}s): {error[:160]}", flush=True)
+            continue
+        s = score(task, calls, answer, write_tools, state_results)
         rows.append({
-            "id": task["id"], "class": task["class"], "passed": s.passed and not error,
+            "id": task["id"], "class": task["class"], "passed": s.passed,
             "tool_selection": s.tool_selection, "gating": s.gating, "success": s.success,
             "latency_s": round(latency, 1), "reasons": s.reasons,
             "calls": [{"name": c.name, "arguments": c.arguments} for c in calls],
             "answer": answer[:2000], "reviewed": task.get("reviewed", False),
         })
+        _save(out, model, rows)
         print(f"  {'PASS' if rows[-1]['passed'] else 'FAIL'} ({latency:.0f}s) "
               + ("; ".join(s.reasons[:2]) if s.reasons else ""), flush=True)
-    _demo("reset.py")
-    _demo("seed.py")
-
-    RESULTS_DIR.mkdir(exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    out = RESULTS_DIR / f"{stamp}-{model.replace(':', '_').replace('/', '_')}.json"
-    out.write_text(json.dumps({"model": model, "date": stamp, "agent": "ops",
-                               "tasks": rows}, indent=1))
+    try:
+        _demo("reset.py")
+        _demo("seed.py")
+    except SetupError as exc:
+        print(f"final demo reset failed (results are saved): {exc}")
     print(f"\nwrote {out.relative_to(ROOT)}")
     return out
 
@@ -298,11 +367,14 @@ def report(doc: dict) -> int:
              f"{len(doc['tasks'])} human-reviewed tasks; agent `ops` "
              "(smolagents/agents/ops_agent.py); each task on a freshly seeded demo.", "",
              "| Model | Date | Pass | Tool selection | Gating | Task success | "
-             + " | ".join(c.title() for c in classes) + " | Median latency |",
+             + " | ".join(c.title() for c in classes) + " | Median latency | Tasks run |",
              "| --- | --- | ---: | ---: | ---: | ---: | " + " | ".join("---:" for _ in classes)
-             + " | ---: |"]
+             + " | ---: | ---: |"]
     for r in runs:
-        t = r["tasks"]
+        infra = [x for x in r["tasks"] if x.get("infra_error")]
+        t = [x for x in r["tasks"] if not x.get("infra_error")]
+        if not t:
+            continue
         pct = lambda xs: f"{100 * sum(xs) / len(xs):.0f}%" if xs else "–"  # noqa: E731
         lat = sorted(x["latency_s"] for x in t)
         per_class = [pct([x["passed"] for x in t if x["class"] == c]) for c in classes]
@@ -310,11 +382,14 @@ def report(doc: dict) -> int:
             f"| `{r['model']}` | {r['date']} | {pct([x['passed'] for x in t])} | "
             f"{pct([x['tool_selection'] for x in t])} | {pct([x['gating'] for x in t])} | "
             f"{pct([bool(x['success']) for x in t])} | " + " | ".join(per_class)
-            + f" | {lat[len(lat) // 2]:.0f}s |")
+            + f" | {lat[len(lat) // 2]:.0f}s | {len(t)}/{len(doc['tasks'])}"
+            + (f" ({len(infra)} infra)" if infra else "") + " |")
     lines += ["", "Columns: **Tool selection** = required/ordered tools called, no "
               "forbidden ones. **Gating** = writes stayed in their tier (gated writes "
               "came back PENDING APPROVAL, were reported, and weren't retried). **Task "
-              "success** = answer and live-state checks. Raw runs: `evals/results/`."]
+              "success** = answer and live-state checks. **Tasks run** excludes tasks "
+              "skipped for infrastructure errors (demo reset/seed failed), which aren't "
+              "counted against the model. Raw runs: `evals/results/`."]
     (HERE / "RESULTS.md").write_text("\n".join(lines) + "\n")
     print("wrote evals/RESULTS.md")
     return 0
@@ -327,6 +402,8 @@ def main() -> int:
     ap.add_argument("--report", action="store_true")
     ap.add_argument("--model")
     ap.add_argument("--only", help="comma-separated task ids")
+    ap.add_argument("--resume", action="store_true",
+                    help="continue the newest results file for --model, skipping scored tasks")
     a = ap.parse_args()
     doc = load_tasks(a.tasks)
     if a.dry_run:
@@ -337,7 +414,7 @@ def main() -> int:
         ap.error("--model is required for a live run (or use --dry-run / --report)")
     if dry_run(doc):
         return 1
-    run_live(doc, a.model, set(a.only.split(",")) if a.only else None)
+    run_live(doc, a.model, set(a.only.split(",")) if a.only else None, a.resume)
     return 0
 
 
