@@ -46,6 +46,9 @@ jobs:
         run: >-
           git ls-files -z '*.sh' |
           xargs -0 uvx --from shellcheck-py==${SHELLCHECK_PY_VERSION} shellcheck
+      - name: no public Gradio tunnels
+        # smolagents' GradioUI.launch defaults to share=True (public URL).
+        run: python3 .github/scripts/check_no_public_share.py
 
   eval:
     name: Eval harness (dry run, no GPU)
