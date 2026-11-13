@@ -88,7 +88,6 @@ def test_failed_notify_execution_is_not_reported_as_success(spy_executor, notifi
     assert _call("create") == "ERROR: upstream said no"
     assert notifications == []
 
-
 def test_notify_executor_crash_is_audited_not_raised(notifications):
     def boom(params):
         raise RuntimeError("upstream exploded")
@@ -99,7 +98,6 @@ def test_notify_executor_crash_is_audited_not_raised(notifications):
     assert notifications == [], "a crashed write must not be reported as completed"
     entry = policy.read_audit()[0]
     assert entry["event"] == "action.failed" and "upstream exploded" in entry["error"]
-
 
 # ── Per-tool overrides from env ──────────────────────────────────────────────
 

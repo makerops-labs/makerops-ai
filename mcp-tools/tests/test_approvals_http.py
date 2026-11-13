@@ -60,7 +60,6 @@ def test_resolve_with_token_executes(client, pending):
     assert resp.status_code == 303
     assert spy.calls == [{"x": 1}]
 
-
 @pytest.mark.parametrize("path,method", [
     ("/approvals", "get"), ("/inbox", "get"),
     ("/approvals/{id}/approve", "post"), ("/approvals/{id}/reject", "post")])
@@ -90,3 +89,17 @@ def test_unknown_verb_is_rejected_and_changes_nothing(client, pending, verb):
 def test_inbox_requires_token(client):
     assert client.get("/inbox").status_code == 401
     assert client.get(f"/inbox?token={TOKEN}").status_code == 200
+
+def test_empty_token_config_leaves_approvals_open(client, pending, monkeypatch):
+    """Documents CURRENT behavior, reported in the PR as a finding.
+
+    With APPROVALS_TOKEN unset/empty, `_authorized()` returns True, so anyone
+    who can reach the port can approve gated actions (fail-open). start.sh
+    generates a token from the GENERATE_ME placeholder, so this needs a
+    misconfiguration to bite — but a safety gate should fail closed. Flip this
+    assertion when the fail-closed fix lands.
+    """
+    monkeypatch.setattr(config, "APPROVALS_TOKEN", "")
+    action_id, spy = pending
+    assert client.post(f"/approvals/{action_id}/approve").status_code == 303
+    assert spy.calls == [{"x": 1}]
