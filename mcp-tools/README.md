@@ -60,7 +60,7 @@ static baseline block ([openwebui/contexts/_baseline.md](../openwebui/contexts/_
 | `web` | `web_search`, `fetch_url` | searxng running |
 | `x` | `x_search_recent` (X/Twitter, last 7 days) — **costs real money per read** (~$0.005-0.01/read, no free tier; confirmed live 2026-07-09 at the $0.005 tier), used by the self-improvement research sweep. Defaults to/caps at 100 results/call → **$0.50-$1.00/call**; see [docs/ai-setup-checklist.md](../docs/ai-setup-checklist.md) "§5e" for the full per-loop-iteration cost math | `X_API_BEARER_TOKEN` |
 | `outline` | search/get/list, create/update documents | `OUTLINE_API_TOKEN` |
-| `inventree` | search/get parts, list stock, create part, adjust stock | `INVENTREE_API_TOKEN` |
+| `inventree` | search/get parts, list stock, BOM with shortfall check, create part, adjust stock, draft + issue purchase orders | `INVENTREE_API_TOKEN` |
 | `plane` | list projects/issues, get issue, create/update issue, comment | `PLANE_API_KEY` + `PLANE_WORKSPACE_SLUG` |
 | `n8n` | list workflows/executions, activate, run webhook (approval-gated) | `N8N_API_KEY` |
 | `n8nmcp` | passthrough proxy of the standalone [n8n-mcp](../n8n-mcp/) service (:8104): node docs, templates, validation, workflow create / diff-based update — so the smolagents `n8n_builder` persona can reach it. Destructive + execution tools disabled on the n8n-mcp side; **no** approval gate here. Open WebUI's n8n Architect preset connects to :8104 directly instead | `N8NMCP_AUTH_TOKEN` (+ `n8n-mcp` service running) |
@@ -98,14 +98,14 @@ to every attached agent.
 Every write tool routes through a tiered policy:
 
 - **Notify tier** — additive changes (new documents, issues, parts, draft
-  replies, images, diagrams, agents) execute immediately; a change summary is
+  replies, draft purchase orders, images, diagrams, agents) execute immediately; a change summary is
   appended to the audit log and POSTed to `APPROVAL_NOTIFY_WEBHOOK` so you can
   review at your leisure.
 - **Gate tier** — held as a pending action you must approve in the web UI at
   `/approvals` before it executes. Gated by default: overwrites of documents
   or issues **you** created (or previously approved — tracked in a provenance
-  registry), and business-effect mutations (stock adjustments, workflow
-  activation, webhook/task triggers, sending customer email). Deletions would
+  registry), and business-effect mutations (stock adjustments, placing a
+  purchase order with a supplier, workflow activation, webhook/task triggers, sending customer email). Deletions would
   always gate (none exist yet). Pending actions expire after
   `APPROVAL_TTL_HOURS`.
 
@@ -279,6 +279,14 @@ uv run pytest            # from mcp-tools/; pytest is a dev-only dependency
 
 | File | What it proves |
 | --- | --- |
+| `tests/test_policy.py` | `delete`/`effect` actions and overwrites of user-owned content are held as `PENDING APPROVAL` and never execute before approval; additive `create`s execute and notify, and a crashing executor is audited as `action.failed` instead of reported as success; unknown action kinds fall back to gate; unregistered tools are refused; `APPROVAL_GATE_EXEMPT` / `APPROVAL_FORCE_GATE` overrides apply per domain or per tool and can never exempt a delete; approve executes exactly once, reject never executes; approvals older than `APPROVAL_TTL_HOURS` expire and cannot execute. |
+| `tests/test_tool_routing.py` | Every tool documented as `WRITE ACTION` routes through `policy.apply_policy` (static AST check, so a new tool can't silently bypass the gate); every `action_kind` is a literal; a real tool (`inventree_adjust_stock`) is held until approved. |
+| `tests/test_inventree_po_tools.py` | `inventree_get_bom` computes per-component need/available/shortfall and lists suppliers for short lines (read-only, ignores BOM lines of other assemblies); `inventree_create_purchase_order` validates every line has a supplier part **before** creating anything, uses supplier-part ids, and numbers `PO-NNNN`; `inventree_issue_purchase_order` is held for approval and places the order only when approved. |
+| `tests/test_approvals_http.py` | `/approvals` and the approve/reject endpoints refuse requests without a valid `APPROVALS_TOKEN` (query param or cookie) and change nothing when refused; with no token configured they fail closed (503); unknown verbs are refused (400). |
+
+The suite was mutation-checked: breaking the gate for `effect` actions,
+ignoring the TTL, letting exemptions apply to deletes, allowing a second
+approval, or downgrading `inventree_issue_purchase_order` to run without
 | `tests/test_policy.py` | `delete`/`effect` actions and overwrites of user-owned content are held as `PENDING APPROVAL` and never execute before approval; additive `create`s execute and notify; unknown action kinds fall back to gate; unregistered tools are refused; `APPROVAL_GATE_EXEMPT` / `APPROVAL_FORCE_GATE` overrides apply per domain or per tool and can never exempt a delete; approve executes exactly once, reject never executes; approvals older than `APPROVAL_TTL_HOURS` expire and cannot execute. |
 | `tests/test_tool_routing.py` | Every tool documented as `WRITE ACTION` routes through `policy.apply_policy` (static AST check, so a new tool can't silently bypass the gate); every `action_kind` is a literal; a real tool (`inventree_adjust_stock`) is held until approved. |
 | `tests/test_approvals_http.py` | `/approvals` and the approve/reject endpoints refuse requests without a valid `APPROVALS_TOKEN` (query param or cookie) and change nothing when refused. Also pins one known gap: with `APPROVALS_TOKEN` empty, the endpoints are open. |

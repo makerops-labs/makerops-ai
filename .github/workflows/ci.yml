@@ -40,6 +40,7 @@ jobs:
       - name: ruff
         run: >-
           uvx ruff@${RUFF_VERSION} check
+          mcp-tools smolagents redeploy sandbox alexa-bridge demo
           mcp-tools smolagents redeploy sandbox alexa-bridge
           --output-format github
       - name: shellcheck
