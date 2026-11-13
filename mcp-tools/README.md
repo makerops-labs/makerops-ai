@@ -259,6 +259,26 @@ up -d` — a plain restart does not re-read the env file. Rebuild
 (`./start.sh`) only when dependencies change. Data (approvals, audit log,
 provenance, saved diagrams) lives under `data/mcp-tools/`.
 
+### Tests
+
+Safety-policy tests run on the host with no network and no running services
+(write executors are replaced by in-memory spies, real HTTP transports are
+blocked, and all state goes to a temp dir):
+
+```bash
+uv run pytest            # from mcp-tools/; pytest is a dev-only dependency
+```
+
+| File | What it proves |
+| --- | --- |
+| `tests/test_policy.py` | `delete`/`effect` actions and overwrites of user-owned content are held as `PENDING APPROVAL` and never execute before approval; additive `create`s execute and notify; unknown action kinds fall back to gate; unregistered tools are refused; `APPROVAL_GATE_EXEMPT` / `APPROVAL_FORCE_GATE` overrides apply per domain or per tool and can never exempt a delete; approve executes exactly once, reject never executes; approvals older than `APPROVAL_TTL_HOURS` expire and cannot execute. |
+| `tests/test_tool_routing.py` | Every tool documented as `WRITE ACTION` routes through `policy.apply_policy` (static AST check, so a new tool can't silently bypass the gate); every `action_kind` is a literal; a real tool (`inventree_adjust_stock`) is held until approved. |
+| `tests/test_approvals_http.py` | `/approvals` and the approve/reject endpoints refuse requests without a valid `APPROVALS_TOKEN` (query param or cookie) and change nothing when refused. Also pins one known gap: with `APPROVALS_TOKEN` empty, the endpoints are open. |
+
+The suite was mutation-checked: breaking the gate for `effect` actions,
+ignoring the TTL, letting exemptions apply to deletes, or allowing a second
+approval each makes it fail.
+
 ## Stop / Teardown
 
 ```bash
