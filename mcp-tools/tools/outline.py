@@ -3,7 +3,7 @@
 from fastmcp import FastMCP
 
 from . import config, policy
-from .client import fmt, make_client, request_json
+from .client import make_client, request_json
 
 mcp = FastMCP(
     "outline",

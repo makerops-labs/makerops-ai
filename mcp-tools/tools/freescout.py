@@ -8,7 +8,7 @@ carry the Host header of the browser-facing URL (FREESCOUT_SITE_HOST)."""
 from fastmcp import FastMCP
 
 from . import config, policy
-from .client import fmt, make_client, request_json
+from .client import make_client, request_json
 
 mcp = FastMCP(
     "freescout",

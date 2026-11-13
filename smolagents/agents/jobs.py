@@ -774,7 +774,7 @@ def _run_debate_turn(agent, job: dict, workspace: Path) -> None:
                   "summary": f"(turn unusable: {reason})",
                   "verdict": "continue", "redirect_note": ""}
     else:
-        first_line = next((l.strip() for l in text.splitlines() if l.strip()),
+        first_line = next((ln.strip() for ln in text.splitlines() if ln.strip()),
                           "")
         verdict, redirect_note = "continue", ""
         if debate["persona"] == "monitor":

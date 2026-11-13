@@ -1,5 +1,7 @@
 # MakerOps AI
 
+[![CI](https://github.com/makerops-labs/makerops-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/makerops-labs/makerops-ai/actions/workflows/ci.yml)
+
 ![MakerOps AI](assets/images/makerops-ai-hero.png)
 
 The agentic AI ecosystem layered on the public

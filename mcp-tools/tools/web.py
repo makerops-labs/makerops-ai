@@ -2,7 +2,6 @@
 content-type-aware URL fetcher that can review (not execute) any file type.
 """
 
-import struct
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse

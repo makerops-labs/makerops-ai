@@ -43,7 +43,6 @@ echo "Starting services..."
 docker compose -p "$PROJECT" up -d
 
 PORT=$(grep "^N8NMCP_PORT_HOST=" .env | cut -d= -f2-); PORT=${PORT:-8104}
-TOKEN=$(grep "^N8NMCP_AUTH_TOKEN=" .env | cut -d= -f2-)
 
 echo ""
 echo "n8n-mcp is starting. Ready in ~15 seconds."

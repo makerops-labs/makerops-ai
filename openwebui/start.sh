@@ -41,7 +41,7 @@ docker compose -p "$PROJECT" up -d
 # own). Lost on image recreate/pull, so re-applied on every start. Idempotent;
 # restarts the container only if a patch actually changed something.
 echo "Applying runtime patches..."
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
     docker ps --format '{{.Names}}' | grep -qx "$PROJECT" && break
     sleep 1
 done

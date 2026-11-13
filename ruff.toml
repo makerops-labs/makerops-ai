@@ -1,0 +1,10 @@
+# Lint baseline for CI (pinned ruff version lives in .github/workflows/ci.yml).
+# Deliberately correctness-focused: syntax/runtime errors (E4, E7, E9),
+# pyflakes (F) and bugbear (B). Style-only rule families are left off so the
+# signal stays "this is probably a bug", not formatting churn. Ruff's own
+# defaults widen between releases; this file pins what CI enforces.
+target-version = "py312"
+extend-exclude = ["**/data/**", "**/.venv/**", "experiments/**"]
+
+[lint]
+select = ["E4", "E7", "E9", "F", "B"]
