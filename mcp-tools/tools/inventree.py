@@ -81,8 +81,8 @@ def _items(data):
 def inventree_get_bom(part_id: int, build_quantity: float = 1) -> str:
     """Bill of materials for an assembly, with stock check. For each component:
     quantity per assembly, total needed for build_quantity assemblies, stock
-    available (unallocated), and any shortfall. Short components list their
-    suppliers (supplier id + SKU) so a purchase order can be raised.
+    available (unallocated), any shortfall, and the component's suppliers
+    (supplier id + SKU) so a purchase order can be raised.
     Use this to answer "can we build/ship N of X?" before ordering parts."""
     if build_quantity <= 0:
         return "ERROR: build_quantity must be positive."
@@ -111,17 +111,58 @@ def inventree_get_bom(part_id: int, build_quantity: float = 1) -> str:
         if short:
             short_count += 1
             line += f" — SHORT {short:g}"
-            ok, sps = _req("GET", "/api/company/part/", params={"part": b["sub_part"]})
-            suppliers = [sp for sp in _items(sps) if sp.get("part") == b["sub_part"]] if ok else []
-            line += ("; suppliers: " + ", ".join(
-                f"supplier {sp.get('supplier')} SKU {sp.get('SKU')}" for sp in suppliers)
-                if suppliers else "; no supplier on file")
         else:
             line += " — ok"
+        ok, sps = _req("GET", "/api/company/part/", params={"part": b["sub_part"]})
+        suppliers = [sp for sp in _items(sps) if sp.get("part") == b["sub_part"]] if ok else []
+        if not ok:
+            line += "; supplier lookup failed"
+        elif suppliers:
+            line += "; suppliers: " + ", ".join(
+                f"supplier {sp.get('supplier')} SKU {sp.get('SKU')}" for sp in suppliers)
+        else:
+            line += "; no supplier on file"
         out.append(line)
     head = (f"BOM for part {part_id}, building {build_quantity:g}: {len(lines)} components, "
             + (f"{short_count} short." if short_count else "all in stock."))
     return "\n".join([head, *out])
+
+
+@mcp.tool
+def inventree_list_suppliers(part_id: int | None = None, name: str | None = None) -> str:
+    """Find suppliers. Read-only.
+    - part_id: who supplies this part, with supplier id and SKU (use the
+      supplier id for inventree_create_purchase_order).
+    - name: suppliers whose name contains this text, with their ids.
+    - neither: every supplier on file (up to 50).
+    If both are given, part_id is used."""
+    name = (name or "").strip()
+    if part_id is not None:
+        ok, data = _req("GET", "/api/company/part/",
+                        params={"part": part_id, "supplier_detail": "true"})
+        if not ok:
+            return data
+        # Re-check the filter: some InvenTree list endpoints ignore params.
+        sps = [sp for sp in _items(data) if sp.get("part") == part_id]
+        if not sps:
+            return f"No supplier on file for part {part_id}."
+        return "\n".join(
+            f"- supplier {sp.get('supplier')} "
+            f"({(sp.get('supplier_detail') or {}).get('name', 'unknown')}): SKU {sp.get('SKU')}"
+            for sp in sps)
+    # No `limit`: InvenTree then returns the full list, so a server-side
+    # search page can't crowd out a real name match; we cap the output below.
+    params = {"is_supplier": "true"}
+    if name:
+        params["search"] = name
+    ok, data = _req("GET", "/api/company/", params=params)
+    if not ok:
+        return data
+    companies = [c for c in _items(data) if c.get("is_supplier")
+                 and (not name or name.lower() in str(c.get("name", "")).lower())]
+    if not companies:
+        return f"No supplier matches '{name}'." if name else "No suppliers on file."
+    return "\n".join(f"- supplier {c.get('pk')}: {c.get('name')}" for c in companies[:50])
 
 
 # ── Writes ─────────────────────────────────────────────────────────────────────
@@ -177,7 +218,7 @@ def _do_create_purchase_order(params: dict) -> str:
     missing = [ln["part_id"] for ln in params["lines"] if ln["part_id"] not in sp_map]
     if missing:  # validate everything before creating anything
         return (f"ERROR: supplier {params['supplier_id']} has no supplier part for "
-                f"part id(s) {missing}. Check suppliers with inventree_get_bom.")
+                f"part id(s) {missing}. Check suppliers with inventree_list_suppliers.")
     ok, reference = _next_po_reference()
     if not ok:
         return reference

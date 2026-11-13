@@ -30,6 +30,11 @@ class FakeInvenTree:
             {"pk": 101, "part": 11, "supplier": 5, "SKU": "LID-1"},
             {"pk": 102, "part": 12, "supplier": 5, "SKU": "M3-8"},
         ]
+        self.companies = [
+            {"pk": 5, "name": "Demo Supply Co.", "is_supplier": True},
+            {"pk": 6, "name": "Acme Fasteners", "is_supplier": True},
+            {"pk": 7, "name": "Juniper Labs", "is_supplier": False},  # a customer
+        ]
         self.pos = [{"pk": 6, "reference": "PO-0006"}, {"pk": 3, "reference": "LEGACY-17"}]
 
     def __call__(self, method, path, params=None, json=None, **_):
@@ -43,6 +48,8 @@ class FakeInvenTree:
             if params and "part" in params:
                 sp = [s for s in sp if s["part"] == params["part"]]
             return True, sp
+        if method == "GET" and path == "/api/company/":
+            return True, self.companies  # ignores filters, like the real API sometimes does
         if method == "GET" and path == "/api/order/po/":
             return True, self.pos
         if method == "GET" and path.startswith("/api/order/po/"):
@@ -73,7 +80,7 @@ def test_bom_reports_shortfall_and_suppliers(api):
     out = fn(inv.inventree_get_bom)(part_id=1, build_quantity=20)
     assert out.startswith("BOM for part 1, building 20: 3 components, 2 short.")
     lines = out.splitlines()[1:]
-    assert "need 20, available 25 — ok" in lines[0]
+    assert "need 20, available 25 — ok; no supplier on file" in lines[0]
     assert "need 20, available 8 — SHORT 12; suppliers: supplier 5 SKU LID-1" in lines[1]
     assert "need 80, available 50 — SHORT 30; suppliers: supplier 5 SKU M3-8" in lines[2]
 
@@ -165,3 +172,52 @@ def test_rejected_issue_never_places_the_order(api):
     action_id = out.split("#", 1)[1].split(":", 1)[0]
     policy.resolve_action(action_id, approve=False)
     assert api.posts() == []
+
+
+# ── inventree_list_suppliers ─────────────────────────────────────────────────
+
+def test_bom_lists_suppliers_even_when_nothing_is_short(api):
+    out = fn(inv.inventree_get_bom)(part_id=1, build_quantity=1)
+    assert "all in stock" in out.splitlines()[0]
+    assert "— ok; suppliers: supplier 5 SKU LID-1" in out
+
+
+def test_list_suppliers_for_part(api):
+    api.supplier_parts[0]["supplier_detail"] = {"name": "Demo Supply Co."}
+    out = fn(inv.inventree_list_suppliers)(part_id=11)
+    assert out == "- supplier 5 (Demo Supply Co.): SKU LID-1"
+
+
+def test_list_suppliers_rechecks_part_filter(api, monkeypatch):
+    real = api.__call__
+    monkeypatch.setattr(inv, "_req", lambda m, p, params=None, **kw: (
+        (True, api.supplier_parts) if p == "/api/company/part/" else real(m, p, params, **kw)))
+    out = fn(inv.inventree_list_suppliers)(part_id=12)
+    assert "SKU M3-8" in out and "LID-1" not in out
+
+
+def test_list_suppliers_by_name_excludes_customers_and_rechecks(api):
+    assert fn(inv.inventree_list_suppliers)(name="demo") == "- supplier 5: Demo Supply Co."
+    assert fn(inv.inventree_list_suppliers)(name="juniper") == "No supplier matches 'juniper'."
+    everyone = fn(inv.inventree_list_suppliers)()
+    assert "Demo Supply Co." in everyone and "Acme" in everyone and "Juniper" not in everyone
+
+
+def test_list_suppliers_is_read_only(api):
+    fn(inv.inventree_list_suppliers)(name="demo")
+    fn(inv.inventree_list_suppliers)(part_id=11)
+    assert api.posts() == []
+
+
+def test_list_suppliers_name_is_trimmed_and_unpaginated(api):
+    assert fn(inv.inventree_list_suppliers)(name="  demo ") == "- supplier 5: Demo Supply Co."
+    company_calls = [c for c in api.calls if c[1] == "/api/company/"]
+    assert company_calls and "limit" not in company_calls[-1][2]
+
+
+def test_bom_says_when_supplier_lookup_failed(api, monkeypatch):
+    real = api.__call__
+    monkeypatch.setattr(inv, "_req", lambda m, p, params=None, **kw: (
+        (False, "ERROR: InvenTree 500") if p == "/api/company/part/" else real(m, p, params, **kw)))
+    out = fn(inv.inventree_get_bom)(part_id=1, build_quantity=1)
+    assert out.count("supplier lookup failed") == 3 and "no supplier on file" not in out
