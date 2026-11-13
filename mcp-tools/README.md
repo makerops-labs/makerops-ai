@@ -113,12 +113,20 @@ Update tools require a `changes_summary` list from the model, and document
 updates include a unified diff in the review UI. Models can poll
 `approval_status` but **cannot approve** — approval only happens in the UI.
 
-Tune trust over time in `.env`:
+Tune trust over time in `.env` (comments go on their own line — `env_file`
+would otherwise make the comment part of the value):
 
 ```text
-APPROVAL_GATE_EXEMPT=comfyui,inventree.inventree_adjust_stock   # gate → notify
-APPROVAL_FORCE_GATE=outline                                     # notify → gate
+# gate → notify
+APPROVAL_GATE_EXEMPT=comfyui,inventree.inventree_adjust_stock
+# notify → gate
+APPROVAL_FORCE_GATE=outline
 ```
+
+The approvals UI (`/approvals`, `/inbox`) requires `APPROVALS_TOKEN`, which
+`start.sh` generates on first run. If it is ever unset, the UI **fails
+closed**: it answers 503 and nothing can be approved until a token is set
+(pending actions stay queued).
 
 Apply `.env` changes with `docker compose -p mcp-tools up -d` (recreate).
 

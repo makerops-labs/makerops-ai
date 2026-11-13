@@ -60,6 +60,35 @@ def test_resolve_with_token_executes(client, pending):
     assert resp.status_code == 303
     assert spy.calls == [{"x": 1}]
 
+@pytest.mark.parametrize("path,method", [
+    ("/approvals", "get"), ("/inbox", "get"),
+    ("/approvals/{id}/approve", "post"), ("/approvals/{id}/reject", "post")])
+def test_empty_token_config_fails_closed(client, pending, monkeypatch, path, method):
+    """With no APPROVALS_TOKEN configured, nobody is authorized (503) and the
+    pending action stays untouched — not everybody, as it was before."""
+    monkeypatch.setattr(config, "APPROVALS_TOKEN", "")
+    action_id, spy = pending
+    url = path.format(id=action_id)
+    for attempt in (url, f"{url}?token=", f"{url}?token=anything"):
+        resp = getattr(client, method)(attempt)
+        assert resp.status_code == 503, attempt
+        assert "APPROVALS_TOKEN is not set" in resp.text
+    assert spy.calls == []
+    assert policy.get_action(action_id)["status"] == "pending"
+
+
+@pytest.mark.parametrize("verb", ["Approve", "delete", "approve2", "x"])
+def test_unknown_verb_is_rejected_and_changes_nothing(client, pending, verb):
+    action_id, spy = pending
+    resp = client.post(f"/approvals/{action_id}/{verb}?token={TOKEN}")
+    assert resp.status_code == 400
+    assert spy.calls == []
+    assert policy.get_action(action_id)["status"] == "pending"
+
+
+def test_inbox_requires_token(client):
+    assert client.get("/inbox").status_code == 401
+    assert client.get(f"/inbox?token={TOKEN}").status_code == 200
 
 def test_empty_token_config_leaves_approvals_open(client, pending, monkeypatch):
     """Documents CURRENT behavior, reported in the PR as a finding.

@@ -14,6 +14,7 @@ Endpoints:
 import contextlib
 import html
 import json
+import secrets
 
 import uvicorn
 from fastmcp import FastMCP
@@ -89,6 +90,11 @@ all_mcp_apps = [composed_app, *domain_apps.values()]
 
 @contextlib.asynccontextmanager
 async def lifespan(app):
+    if not config.APPROVALS_TOKEN:
+        print("[mcp-tools] WARNING: APPROVALS_TOKEN is not set — the approvals UI "
+              "is disabled (fails closed) and gated actions cannot be approved. "
+              "Run ./start.sh or set the token, then recreate the container.",
+              flush=True)
     async with contextlib.AsyncExitStack() as stack:
         for mcp_app in all_mcp_apps:
             await stack.enter_async_context(mcp_app.lifespan(mcp_app))
@@ -130,14 +136,29 @@ _NAV = ('<nav><a href="/approvals">Approvals</a>'
         '<a href="/inbox">Task inbox</a></nav>')
 
 
-def _authorized(request: Request) -> bool:
+def _token_matches(supplied: str | None) -> bool:
+    expected = config.APPROVALS_TOKEN
+    return bool(expected and supplied) and secrets.compare_digest(
+        supplied.encode(), expected.encode())
+
+
+def _auth_failure(request: Request) -> HTMLResponse | None:
+    """None if the request may use the human approval UI, else the refusal.
+
+    Fails closed: with no APPROVALS_TOKEN configured nobody is authorized
+    (503), rather than everybody. Pending actions simply stay queued.
+    """
     if not config.APPROVALS_TOKEN:
-        return True
+        return HTMLResponse(
+            f"<style>{_PAGE_CSS}</style><main><div class='card'>"
+            "<h3>Approvals are disabled</h3><p class='meta'>APPROVALS_TOKEN is not "
+            "set in mcp-tools/.env, so no one can approve or reject actions. Run "
+            "<code>./start.sh</code> (it generates a token) or set one, then "
+            "recreate the container. Pending actions remain queued.</p></div></main>",
+            status_code=503)
     supplied = request.query_params.get("token") or request.cookies.get("approvals_token")
-    return supplied == config.APPROVALS_TOKEN
-
-
-def _auth_page() -> HTMLResponse:
+    if _token_matches(supplied):
+        return None
     return HTMLResponse(
         f"<style>{_PAGE_CSS}</style><main><div class='card'>"
         "<h3>Authorization required</h3><p class='meta'>Open this page as "
@@ -147,8 +168,8 @@ def _auth_page() -> HTMLResponse:
 
 
 async def approvals_page(request: Request):
-    if not _authorized(request):
-        return _auth_page()
+    if (refusal := _auth_failure(request)) is not None:
+        return refusal
 
     pending = policy.list_actions(status="pending")
     cards = []
@@ -184,15 +205,22 @@ async def approvals_page(request: Request):
     </main></body></html>"""
     resp = HTMLResponse(body)
     token = request.query_params.get("token")
-    if token and token == config.APPROVALS_TOKEN:
+    if _token_matches(token):
         resp.set_cookie("approvals_token", token, httponly=True, max_age=86400 * 30)
     return resp
 
 
 async def resolve_action(request: Request):
-    if not _authorized(request):
-        return _auth_page()
-    approve = request.path_params["verb"] == "approve"
+    if (refusal := _auth_failure(request)) is not None:
+        return refusal
+    verb = request.path_params["verb"]
+    if verb not in ("approve", "reject"):
+        return HTMLResponse(
+            f"<style>{_PAGE_CSS}</style><main><div class='card'>"
+            f"<h3>Unknown action '{html.escape(verb)}' — use approve or reject.</h3>"
+            f"<p><a href='/approvals' style='color:#5ba8d4'>back</a></p></div></main>",
+            status_code=400)
+    approve = verb == "approve"
     ok, message = policy.resolve_action(request.path_params["action_id"], approve)
     if not ok:
         return HTMLResponse(f"<style>{_PAGE_CSS}</style><main><div class='card'>"
@@ -280,8 +308,8 @@ def _engagement_card(session: dict) -> str:
 
 
 async def inbox_page(request: Request):
-    if not _authorized(request):
-        return _auth_page()
+    if (refusal := _auth_failure(request)) is not None:
+        return refusal
     jobs = jobs_store.list_jobs() if jobs_store.available() else []
     counts = jobs_store.counts() if jobs_store.available() else {}
     cards = "".join(_job_card(j) for j in jobs)
@@ -301,7 +329,7 @@ async def inbox_page(request: Request):
     </main></body></html>"""
     resp = HTMLResponse(body)
     token = request.query_params.get("token")
-    if token and token == config.APPROVALS_TOKEN:
+    if _token_matches(token):
         resp.set_cookie("approvals_token", token, httponly=True, max_age=86400 * 30)
     return resp
 

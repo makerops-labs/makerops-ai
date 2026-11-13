@@ -259,7 +259,12 @@ def apply_policy(*, domain: str, tool: str, action_kind: str, summary: str,
     tier = _resolve_tier(domain, tool, action_kind, target_id)
 
     if tier == "notify":
-        result = executor(params)
+        try:
+            result = executor(params)
+        except Exception as exc:  # tool bug — audit it like the gated path does
+            _audit("action.failed", domain=domain, tool=tool, summary=summary,
+                   error=str(exc))
+            return f"ERROR: {domain}.{tool} failed: {exc}"
         if result.startswith("ERROR:"):
             return result
         # Record provenance for newly created objects: the executor returns
