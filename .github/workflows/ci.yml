@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUFF_VERSION: "0.17.5"
+  SHELLCHECK_PY_VERSION: "0.11.0.1"
+
+jobs:
+  tests:
+    name: Safety-policy tests (mcp-tools)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: pytest
+        working-directory: mcp-tools
+        run: uv run --frozen pytest -q
+
+  lint:
+    name: Lint (ruff + shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: ruff
+        run: >-
+          uvx ruff@${RUFF_VERSION} check
+          mcp-tools smolagents redeploy sandbox alexa-bridge
+          --output-format github
+      - name: shellcheck
+        run: >-
+          git ls-files -z '*.sh' |
+          xargs -0 uvx --from shellcheck-py==${SHELLCHECK_PY_VERSION} shellcheck
+
+  compose:
+    name: Validate docker compose files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker compose config
+        # Each service reads env_file: .env, which is gitignored; CI copies
+        # .env.example in place so `config` can resolve. No images are pulled
+        # and no containers start (no GPU or models in CI).
+        run: |
+          status=0
+          for f in $(git ls-files '*/docker-compose.yml' | grep -v '^experiments/'); do
+            d=$(dirname "$f")
+            if [ -f "$d/.env.example" ] && [ ! -f "$d/.env" ]; then
+              cp "$d/.env.example" "$d/.env"
+            fi
+            if (cd "$d" && docker compose config -q); then
+              echo "ok   $d"
+            else
+              echo "::error file=$f::docker compose config failed for $d"
+              status=1
+            fi
+          done
+          exit $status

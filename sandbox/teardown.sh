@@ -57,6 +57,8 @@ echo "Removing containers, images, and networks..."
 docker compose -p "$PROJECT" down --rmi all --remove-orphans
 docker rmi makerops-sandbox-runtime:latest 2>/dev/null || true
 if [[ -n "$LEAKED" ]]; then
+    # Word splitting is intended: one argument per leaked container ID.
+    # shellcheck disable=SC2046
     docker rm -f $(docker ps -aq --filter "label=managed-by=makerops-sandbox") 2>/dev/null || true
 fi
 
