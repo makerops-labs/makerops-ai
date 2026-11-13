@@ -40,6 +40,7 @@ jobs:
       - name: ruff
         run: >-
           uvx ruff@${RUFF_VERSION} check
+          mcp-tools smolagents redeploy sandbox alexa-bridge demo evals
           mcp-tools smolagents redeploy sandbox alexa-bridge demo
           mcp-tools smolagents redeploy sandbox alexa-bridge
           --output-format github
@@ -47,6 +48,19 @@ jobs:
         run: >-
           git ls-files -z '*.sh' |
           xargs -0 uvx --from shellcheck-py==${SHELLCHECK_PY_VERSION} shellcheck
+
+  eval:
+    name: Eval harness (dry run, no GPU)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: validate tasks.yaml against the real tool inventory
+        run: uv run --no-project --with pyyaml python evals/run.py --dry-run
+      - name: scoring tests
+        run: uv run --no-project --with pyyaml --with pytest pytest -q evals/tests
 
   compose:
     name: Validate docker compose files
