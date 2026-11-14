@@ -29,7 +29,10 @@ def normalize_input(spec: dict) -> dict:
       several stay a list, as smolagents allows).
     - A ``default`` means the parameter is optional → ``nullable: True``.
       A null branch without a default is still required (pydantic omits
-      ``default`` for required fields), so it stays required.
+      ``default`` for required fields), so it stays required. smolagents'
+      one ``nullable`` flag means both "may be omitted" and "may be None",
+      so such a parameter can't take an explicit None. No mcp-tools tool has
+      that shape; give the parameter a default if one ever needs None.
     - Everything else (description, enum, items, ...) is kept unchanged.
     """
     out = dict(spec)
