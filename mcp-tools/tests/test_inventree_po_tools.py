@@ -35,7 +35,14 @@ class FakeInvenTree:
             {"pk": 6, "name": "Acme Fasteners", "is_supplier": True},
             {"pk": 7, "name": "Juniper Labs", "is_supplier": False},  # a customer
         ]
-        self.pos = [{"pk": 6, "reference": "PO-0006"}, {"pk": 3, "reference": "LEGACY-17"}]
+        self.pos = [
+            {"pk": 6, "reference": "PO-0006", "status": 10, "status_text": "Pending", "supplier": 5,
+             "supplier_detail": {"name": "Demo Supply Co."}, "line_items": 2, "description": "lids"},
+            {"pk": 3, "reference": "LEGACY-17", "status": 30, "supplier": 6,
+             "supplier_detail": {"name": "Acme Fasteners"}, "line_items": 1},
+            {"pk": 8, "reference": "PO-0005", "status": 20, "status_text": "Placed", "supplier": 6,
+             "supplier_detail": {"name": "Acme Fasteners"}, "line_items": 4},
+        ]
 
     def __call__(self, method, path, params=None, json=None, **_):
         self.calls.append((method, path, params, json))
@@ -53,8 +60,10 @@ class FakeInvenTree:
         if method == "GET" and path == "/api/order/po/":
             return True, self.pos
         if method == "GET" and path.startswith("/api/order/po/"):
-            return True, {"pk": 7, "reference": "PO-0007", "line_items": 2,
-                          "status_text": "Pending", "supplier_detail": {"name": "Acme"}}
+            pk = int(path.strip("/").split("/")[-1])
+            po = next((p for p in self.pos if p["pk"] == pk), None)
+            return True, po or {"pk": pk, "reference": f"PO-{pk:04d}", "line_items": 2, "status": 10,
+                                "status_text": "Pending", "supplier_detail": {"name": "Acme"}}
         if method == "POST" and path == "/api/order/po/":
             return True, {"pk": 7, **json}
         if method == "POST" and path == "/api/order/po-line/":
@@ -221,3 +230,50 @@ def test_bom_says_when_supplier_lookup_failed(api, monkeypatch):
         (False, "ERROR: InvenTree 500") if p == "/api/company/part/" else real(m, p, params, **kw)))
     out = fn(inv.inventree_get_bom)(part_id=1, build_quantity=1)
     assert out.count("supplier lookup failed") == 3 and "no supplier on file" not in out
+
+
+def test_list_purchase_orders_open_by_default_newest_first(api):
+    out = fn(inv.inventree_list_purchase_orders)()
+    assert out.splitlines() == [
+        "- order 8 (PO-0005): Placed, supplier 6 (Acme Fasteners), 4 line(s)",
+        "- order 6 (PO-0006): Pending, supplier 5 (Demo Supply Co.), 2 line(s) — lids",
+    ]  # the completed LEGACY-17 is not open
+
+
+def test_list_purchase_orders_pending_gives_the_id_to_issue(api):
+    # The eval's "place the pending draft PO" tasks were unanswerable without this.
+    out = fn(inv.inventree_list_purchase_orders)(status=" Pending ")
+    assert out == "- order 6 (PO-0006): Pending, supplier 5 (Demo Supply Co.), 2 line(s) — lids"
+
+
+def test_list_purchase_orders_all_and_status_fallback(api):
+    out = fn(inv.inventree_list_purchase_orders)(status="all")
+    assert len(out.splitlines()) == 3
+    assert "order 3 (LEGACY-17): Complete" in out  # no status_text → mapped from the code
+
+
+def test_list_purchase_orders_rechecks_supplier_filter(api):
+    # The fake ignores `supplier`, like the real API sometimes does.
+    out = fn(inv.inventree_list_purchase_orders)(supplier_id=5)
+    assert out.startswith("- order 6 ") and "Acme" not in out
+    assert fn(inv.inventree_list_purchase_orders)(status="pending", supplier_id=6) == (
+        "No pending purchase orders for supplier 6.")
+
+
+def test_list_purchase_orders_rejects_unknown_status_and_is_read_only(api):
+    assert fn(inv.inventree_list_purchase_orders)(status="draft").startswith("ERROR: status must be one of")
+    fn(inv.inventree_list_purchase_orders)(status="all")
+    assert api.posts() == []
+
+
+def test_list_purchase_orders_passes_api_errors_through(api, monkeypatch):
+    monkeypatch.setattr(inv, "_req", lambda *a, **k: (False, "ERROR: InvenTree 500"))
+    assert fn(inv.inventree_list_purchase_orders)() == "ERROR: InvenTree 500"
+
+
+def test_issue_refuses_an_order_that_is_not_pending(api):
+    out = fn(inv.inventree_issue_purchase_order)(order_id=8)       # PO-0005, already Placed
+    assert out.startswith("ERROR: order 8 (PO-0005) is Placed, not Pending")
+    out = fn(inv.inventree_issue_purchase_order)(order_id=3)       # LEGACY-17, no status_text
+    assert "is Complete, not Pending" in out
+    assert not policy.list_actions("pending") and api.posts() == []         # nothing queued, nothing placed
