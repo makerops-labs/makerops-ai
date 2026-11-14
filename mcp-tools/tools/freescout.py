@@ -68,8 +68,11 @@ def freescout_get_conversation(conversation_id: int) -> str:
 # ── Writes ─────────────────────────────────────────────────────────────────────
 
 def _do_reply(params: dict) -> str:
-    payload = {"type": "reply" if not params["draft"] else "reply",
-               "text": params["text"], "user": params.get("user_id", 1),
+    # "message" is FreeScout's staff-reply thread type. It does not know
+    # "reply": it stored that as a *customer* thread, so drafts showed up as
+    # if the customer had written them and approved sends never emailed
+    # anyone (found by the agent eval in evals/, 2026-11-14).
+    payload = {"type": "message", "text": params["text"], "user": params.get("user_id", 1),
                "state": "draft" if params["draft"] else "published"}
     ok, data = _req("POST", f"/api/conversations/{params['conversation_id']}/threads",
                     json=payload)
