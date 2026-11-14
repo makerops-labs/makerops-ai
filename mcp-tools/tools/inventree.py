@@ -165,6 +165,51 @@ def inventree_list_suppliers(part_id: int | None = None, name: str | None = None
     return "\n".join(f"- supplier {c.get('pk')}: {c.get('name')}" for c in companies[:50])
 
 
+# InvenTree PurchaseOrderStatus codes.
+_PO_STATUS = {10: "Pending", 20: "Placed", 25: "On hold", 30: "Complete",
+              40: "Cancelled", 50: "Lost", 60: "Returned"}
+_PO_FILTERS = {"pending": {10}, "open": {10, 20, 25}, "all": None}
+
+
+@mcp.tool
+def inventree_list_purchase_orders(status: str = "open", supplier_id: int | None = None) -> str:
+    """List purchase orders, most recent order id first, with the id each tool needs. Read-only.
+    - status: "pending" = drafts not yet placed (place one with
+      inventree_issue_purchase_order); "open" (default) = pending, placed
+      or on hold; "all" = every order.
+    - supplier_id: only this supplier's orders."""
+    status = (status or "open").strip().lower()
+    if status not in _PO_FILTERS:
+        return f"ERROR: status must be one of {', '.join(_PO_FILTERS)} (got '{status}')."
+    params = {"supplier_detail": "true"}
+    if supplier_id is not None:
+        params["supplier"] = supplier_id
+    ok, data = _req("GET", "/api/order/po/", params=params)
+    if not ok:
+        return data
+    wanted = _PO_FILTERS[status]
+    # Re-check both filters: some InvenTree list endpoints ignore params.
+    pos = [po for po in _items(data)
+           if (wanted is None or po.get("status") in wanted)
+           and (supplier_id is None or po.get("supplier") == supplier_id)]
+    if not pos:
+        label = "" if status == "all" else f"{status} "
+        scope = f" for supplier {supplier_id}" if supplier_id is not None else ""
+        return f"No {label}purchase orders{scope}."
+    pos.sort(key=lambda po: po.get("pk") or 0, reverse=True)
+    lines = []
+    for po in pos[:50]:
+        supplier = (po.get("supplier_detail") or {}).get("name", "unknown supplier")
+        state = po.get("status_text") or _PO_STATUS.get(po.get("status"), str(po.get("status")))
+        desc = f" — {po['description']}" if po.get("description") else ""
+        lines.append(f"- order {po.get('pk')} ({po.get('reference')}): {state}, "
+                     f"supplier {po.get('supplier')} ({supplier}), "
+                     f"{po.get('line_items', '?')} line(s){desc}")
+    more = (f"\n(showing 50 of {len(pos)}; narrow with status or supplier_id)"
+            if len(pos) > 50 else "")
+    return "\n".join(lines) + more
+
+
 # ── Writes ─────────────────────────────────────────────────────────────────────
 
 def _do_create_part(params: dict) -> str:
@@ -336,15 +381,23 @@ def inventree_issue_purchase_order(order_id: int) -> str:
     """WRITE ACTION — issues (places) a Pending purchase order with its
     supplier: a business commitment to spend money, so it is held for the
     user's approval before executing.
-    Preconditions: order_id is a Pending purchase order (e.g. one you created
-    with inventree_create_purchase_order) and the user wants it placed.
+    Preconditions: order_id is a Pending purchase order (one you created with
+    inventree_create_purchase_order, or found with
+    inventree_list_purchase_orders(status="pending")) and the user wants it
+    placed.
     Effects: after approval, the order's status becomes Placed.
-    Failure modes: 'ERROR: ...' if the order can't be read; otherwise PENDING
+    Failure modes: 'ERROR: ...' if the order can't be read or isn't Pending
+    (never queued for approval then); otherwise PENDING
     APPROVAL #id (report it to the user, never retry); API errors surface in
     the approval outcome."""
     ok, po = _req("GET", f"/api/order/po/{order_id}/", params={"supplier_detail": "true"})
     if not ok:
         return po
+    if po.get("status") != 10:  # only a Pending order can be placed
+        state = po.get("status_text") or _PO_STATUS.get(po.get("status"), str(po.get("status")))
+        return (f"ERROR: order {order_id} ({po.get('reference')}) is {state}, not Pending; "
+                f"nothing to place. Find pending orders with "
+                f'inventree_list_purchase_orders(status="pending").')
     supplier = (po.get("supplier_detail") or {}).get("name") or f"supplier {po.get('supplier')}"
     return policy.apply_policy(
         domain="inventree", tool="inventree_issue_purchase_order", action_kind="effect",
