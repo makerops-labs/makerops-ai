@@ -40,7 +40,7 @@ jobs:
       - name: ruff
         run: >-
           uvx ruff@${RUFF_VERSION} check
-          mcp-tools smolagents redeploy sandbox alexa-bridge demo evals
+          mcp-tools smolagents redeploy sandbox alexa-bridge demo evals assets
           --output-format github
       - name: shellcheck
         run: >-
@@ -49,6 +49,10 @@ jobs:
       - name: no public Gradio tunnels
         # smolagents' GradioUI.launch defaults to share=True (public URL).
         run: python3 .github/scripts/check_no_public_share.py
+      - name: architecture diagram is up to date
+        # assets/architecture.{svg,drawio} are generated; edit the spec in
+        # assets/make_architecture.py and re-run it instead of editing them.
+        run: python3 assets/make_architecture.py && git diff --exit-code assets/
 
   eval:
     name: Eval harness (dry run, no GPU)
