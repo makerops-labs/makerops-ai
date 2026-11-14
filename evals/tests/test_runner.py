@@ -79,3 +79,77 @@ def test_fresh_run_keeps_previous_file(results, monkeypatch):
     again = run._results_path("m", resume=False)
     assert again == path and not path.exists()
     assert json.loads(path.with_name(path.name + ".prev").read_text())["tasks"][0]["id"] == "t1"
+
+
+def _stub_stack(monkeypatch, behaviours: dict):
+    """Stand-ins for the agent runtime so run_live's loop runs offline.
+    behaviours: task id → "ok" | "crash" | "setup-fail"."""
+    import types
+    from types import SimpleNamespace
+
+    order = list(behaviours)        # tasks run in doc order
+    seeds = []
+
+    class Agent:
+        def run(self, prompt, **kwargs):
+            if behaviours[prompt] == "crash":
+                raise ConnectionError("Ollama connection reset")
+            return f"answer to {prompt}"
+
+    agents_pkg = types.ModuleType("agents")
+    agents_pkg.config = SimpleNamespace(GENERAL_MODEL_ID="")
+    ops = types.ModuleType("agents.ops_agent")
+    ops.build_ops_agent = Agent
+    for name, mod in {"agents": agents_pkg, "agents.config": agents_pkg.config,
+                      "agents.ops_agent": ops}.items():
+        monkeypatch.setitem(sys.modules, name, mod)
+    monkeypatch.setattr(sys, "path", list(sys.path))  # run_live prepends smolagents/
+
+    def demo(script, **kwargs):
+        if script == "seed.py":
+            seeds.append(script)
+            task = order[len(seeds) - 1] if len(seeds) <= len(order) else None
+            if behaviours.get(task) == "setup-fail":
+                raise run.SetupError("demo/seed.py failed 3 times: TimeoutError")
+
+    class State:
+        def setup(self, name):
+            pass
+
+        def check(self, name, arg, calls):
+            return True, ""
+
+    monkeypatch.setattr(run, "_demo", demo)
+    monkeypatch.setattr(run, "State", State)
+    monkeypatch.setattr(run, "tool_inventory", lambda: (set(), set()))
+    monkeypatch.setattr(run, "_pending", lambda: {})
+    monkeypatch.setattr(run, "_reject", lambda ids: None)
+    monkeypatch.setattr(run, "_capture", lambda agent: [])
+    monkeypatch.setattr(run, "score", lambda *a: SimpleNamespace(
+        passed=True, tool_selection=True, gating=True, success=True, reasons=[]))
+    monkeypatch.setattr(run, "ROOT", run.RESULTS_DIR)  # relative_to() in log lines
+
+
+def _doc(*ids):
+    return {"tasks": [{"id": i, "class": "read", "prompt": i} for i in ids]}
+
+
+def test_run_live_records_infra_errors_and_keeps_going(results, monkeypatch):
+    _stub_stack(monkeypatch, {"t1": "ok", "t2": "crash", "t3": "setup-fail", "t4": "ok"})
+    out = run.run_live(_doc("t1", "t2", "t3", "t4"), "m", only=None)
+    rows = {r["id"]: r for r in json.loads(out.read_text())["tasks"]}
+    assert rows["t1"]["passed"] is True and rows["t4"]["passed"] is True
+    assert rows["t2"]["passed"] is None and "ConnectionError" in rows["t2"]["infra_error"]
+    assert rows["t3"]["passed"] is None and "seed.py" in rows["t3"]["infra_error"]
+
+
+def test_run_live_resume_retries_only_infra_rows(results, monkeypatch):
+    behaviours = {"t1": "ok", "t2": "crash"}
+    _stub_stack(monkeypatch, behaviours)
+    out = run.run_live(_doc("t1", "t2"), "m", only=None)
+    first_t1 = json.loads(out.read_text())["tasks"][0]
+    behaviours["t2"] = "ok"                      # the stack is healthy again
+    run.run_live(_doc("t1", "t2"), "m", only=None, resume=True)
+    rows = {r["id"]: r for r in json.loads(out.read_text())["tasks"]}
+    assert rows["t1"] == first_t1                # scored task not re-run
+    assert rows["t2"]["passed"] is True and "infra_error" not in rows["t2"]
