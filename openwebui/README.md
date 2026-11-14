@@ -99,7 +99,7 @@ To connect (Open WebUI ships native MCP streamable-HTTP support):
    tool use.
 
 > A model's **default tools** (set in Workspace → Models → Tools) only reach
-> the model in stock Open WebUI (through 0.11.3) when you switch models *inside the
+> the model in stock Open WebUI (through 0.13.3) when you switch models *inside the
 > chat* — a preset chat opened directly, or a cloned/continued thread, runs
 > with no tools. The `patches/merge-model-toolids.py` runtime patch (applied
 > by `start.sh`) fixes this by mirroring how Open WebUI already handles a
@@ -199,7 +199,7 @@ Interactive full teardown: shows what will be removed, prompts for confirmation,
 ```text
 Browser / API clients
   └─► localhost:8080  (TCP) → Open WebUI
-          └─► openwebui  (ghcr.io/open-webui/open-webui:v0.11.3)
+          └─► openwebui  (ghcr.io/open-webui/open-webui:v0.13.3)
                 ├─► host.docker.internal:11434  → Ollama REST API
                 └─► openwebui data volume  (/app/backend/data)
                       ├─► SQLite database  (users, chats, settings)

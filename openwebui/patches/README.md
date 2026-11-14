@@ -1,7 +1,7 @@
 # Open WebUI runtime patches
 
 Open WebUI runs from the upstream `ghcr.io/open-webui/open-webui` image
-(pinned to a `vX.Y.Z` tag in `docker-compose.yml`; currently `v0.11.3`) with
+(pinned to a `vX.Y.Z` tag in `docker-compose.yml`; currently `v0.13.3`) with
 no Dockerfile of our own, so these are **in-place edits to the container's
 Python source**, applied by `apply.sh` (which `start.sh` calls automatically).
 
@@ -17,7 +17,7 @@ Python source**, applied by `apply.sh` (which `start.sh` calls automatically).
 
 ### `merge-model-toolids.py`
 
-Open WebUI (verified through 0.11.3) applies a Workspace Model's default **`skillIds`**
+Open WebUI (verified through 0.13.3) applies a Workspace Model's default **`skillIds`**
 server-side in `utils/middleware.py:process_chat_payload`, but not its
 **`toolIds`** — tool selection is left entirely to the frontend. The frontend
 only puts `tool_ids` in the chat request when the model is switched *inside the

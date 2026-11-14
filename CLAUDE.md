@@ -104,9 +104,9 @@ debate turn mid-answer) — see the "Debate system" bullet below.
   by `start.sh` via `patches/apply.sh`, idempotent, **lost on `docker
   compose up -d`/`pull`** (survive `restart`). Current patch:
   `merge-model-toolids.py` — the image is pinned to a `vX.Y.Z` tag in
-  `openwebui/docker-compose.yml` (currently `v0.11.3`; bump deliberately —
+  `openwebui/docker-compose.yml` (currently `v0.13.3`; bump deliberately —
   the 0.11.x line has shipped migration regressions). Stock Open WebUI
-  (through 0.11.3) applies a Workspace Model's
+  (through 0.13.3) applies a Workspace Model's
   default `skillIds` server-side but not `toolIds`, and the frontend only
   sends `tool_ids` on an in-chat model switch, so a preset chat opened
   directly (or a cloned/continued thread) runs **toolless**. The patch
