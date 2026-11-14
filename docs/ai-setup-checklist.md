@@ -547,7 +547,7 @@ which has no chat deadline. Both use the same disabled-tool set. See
       tools = ~1-min turns that end in an `agent_dispatch` to `n8n_builder`.
       - The **`patches/merge-model-toolids.py`** runtime patch (applied by
         `openwebui/start.sh` / `patches/apply.sh`) is what makes a preset's
-        attached tools actually reach the model — stock Open WebUI (through 0.11.3) only
+        attached tools actually reach the model — stock Open WebUI (through 0.13.3) only
         sends a model's default tools when you switch models *inside* the chat,
         so a preset opened directly runs toolless. If n8n Architect (or any
         preset) says it has no tools, check `patches/apply.sh` ran after the
