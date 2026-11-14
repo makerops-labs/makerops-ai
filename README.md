@@ -503,10 +503,10 @@ Hard-won specifics — check here before deep-diving (core-side basics like
 
 ## License
 
-MakerOps AI is licensed under the [PolyForm Shield License 1.0.0](LICENSE).
+MakerOps AI is **source-available**, not open source. You may use it under either the [PolyForm Noncommercial License 1.0.0](LICENSE) or the [PolyForm Internal Use License 1.0.0](LICENSE), at your choice.
 
-**Permitted:** Personal use, educational use, internal business operations, and setup/consulting services.
-**Prohibited:** Selling or sublicensing the software, integrating it into commercial products sold to others, or offering it as a hosted or managed service.
+**Permitted:** Personal, hobby, research and educational use; use by charitable, educational, public-research, public-safety or public-health, environmental-protection and government organizations; and use for your own company's internal business operations, including changes for that use.
+**Not permitted under these licenses:** Selling the software, building it into products or services sold to others, running it as a paid hosted service, or distributing it as part of a commercial offering. For those uses, contact the copyright holder through the makerops-labs GitHub organization to discuss a separate license.
 
 Third-party software integrated by this stack (Open WebUI, smolagents, SearXNG, FastMCP, speaches, Kokoro-FastAPI, Hermes Agent, TRELLIS) is governed by its own license. See [NOTICE](NOTICE) for the full list of upstream projects and their licenses.
 
