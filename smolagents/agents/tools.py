@@ -18,6 +18,7 @@ from smolagents import tool
 from smolagents.mcp_client import MCPClient
 
 from . import config
+from .tool_schema import normalize_inputs
 
 _clients: list[MCPClient] = []
 _mounted: set[str] | None | bool = False  # False = not yet fetched
@@ -83,6 +84,14 @@ def get_domain_tools(domain: str) -> list:
         print(f"[tools] MCP domain '{domain}' unavailable "
               f"({type(exc).__name__}); continuing without it.")
         return []
+    for mcp_tool in tools:
+        # mcpadapt drops `required`/null info: without this every defaulted
+        # or optional argument is mandatory (see tool_schema). A schema we
+        # can't repair keeps its original inputs rather than losing the domain.
+        try:
+            mcp_tool.inputs = normalize_inputs(mcp_tool.inputs)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[tools] could not repair schema of {mcp_tool.name} ({exc!r}); kept as-is.")
     _clients.append(client)  # keep the session alive for the app lifetime
     _domain_tools_cache[domain] = tools
     return tools
