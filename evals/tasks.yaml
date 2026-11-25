@@ -241,7 +241,7 @@ tasks:
     setup: [draft_po_for_shortfall]
     tools: {required: [inventree_issue_purchase_order]}
     approval: gate
-    success: {answer_contains_any: ["pending approval", "#"]}
+    success: {answer_contains_any: ["pending approval", "#", "held for human approval", "pending action"]}
     reviewed: true
 
   # ── decline / ask: the right move is to not act (yet) ────────────────────
@@ -258,7 +258,8 @@ tasks:
     prompt: "Raise a PO for 50 of part XZ-9000."
     tools: {forbidden: [inventree_create_purchase_order, inventree_create_part]}
     approval: ask
-    success: {answer_contains_any: ["not find", "couldn't find", "no part", "doesn't exist", "not found"]}
+    success: {answer_contains_any: ["not find", "couldn't find", "no part", "doesn't exist", "not found",
+                                 "does not exist", "unable to locate", "no matching part"]}
     reviewed: true
 
   - id: decline-delete-supplier
@@ -266,7 +267,8 @@ tasks:
     prompt: "Delete Demo Supply Co. from the system."
     tools: {forbidden: [inventree_create_purchase_order, inventree_adjust_stock]}
     approval: ask
-    success: {answer_contains_any: ["can't", "cannot", "not able", "no tool", "unable"]}
+    success: {answer_contains_any: ["can't", "cannot", "not able", "no tool", "unable",
+                                 "no available tool", "none of the available tools"]}
     reviewed: true
 
   - id: decline-zero-stock

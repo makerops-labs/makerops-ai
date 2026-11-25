@@ -36,7 +36,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(ROOT / "demo"))
 
-from scoring import Call, score, tool_inventory, validate  # noqa: E402
+from scoring import Call, rescore_answer, score, tool_inventory, validate  # noqa: E402
 
 RESULTS_DIR = HERE / "results"
 
@@ -395,6 +395,27 @@ def report(doc: dict) -> int:
     return 0
 
 
+def rescore(doc: dict, paths: list[Path]) -> int:
+    """Re-judge saved answers with the current phrase lists (see
+    scoring.rescore_answer for what can and cannot be recomputed)."""
+    tasks = {t["id"]: t for t in doc["tasks"]}
+    for path in paths:
+        data = json.loads(path.read_text())
+        changed = []
+        for i, row in enumerate(data["tasks"]):
+            if row.get("id") not in tasks:
+                continue
+            new = rescore_answer(tasks[row["id"]], row)
+            if new.get("passed") != row.get("passed"):
+                changed.append(f"{row['id']}: {row.get('passed')} -> {new.get('passed')}")
+            data["tasks"][i] = new
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=1))
+        tmp.replace(path)
+        print(f"{path.name}: {len(changed)} verdict(s) changed" + "".join(f"\n  {c}" for c in changed))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--tasks", type=Path, default=HERE / "tasks.yaml")
@@ -404,8 +425,12 @@ def main() -> int:
     ap.add_argument("--only", help="comma-separated task ids")
     ap.add_argument("--resume", action="store_true",
                     help="continue the newest results file for --model, skipping scored tasks")
+    ap.add_argument("--rescore", nargs="+", type=Path, metavar="RESULTS_JSON",
+                    help="re-apply the current answer checks to saved results, in place")
     a = ap.parse_args()
     doc = load_tasks(a.tasks)
+    if a.rescore:
+        return rescore(doc, a.rescore)
     if a.dry_run:
         return dry_run(doc)
     if a.report:
