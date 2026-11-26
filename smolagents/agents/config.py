@@ -41,7 +41,7 @@ def _model_list(env_var: str, default: str) -> list[str]:
 # Reviewer pools for the audit agent: same-expertise models used to catch
 # the lead model's blind spots. gpt-oss is a different lineage (OpenAI vs
 # Qwen), which decorrelates the review. See the model hierarchy table in
-# README.md. qwen3.8:27b-64k (successor to qwen3.6:27b, swapped 2026-08-26)
+# docs/model-stack.md. qwen3.8:27b-64k (successor to qwen3.6:27b, swapped 2026-08-26)
 # out-benchmarks the 35b coding lead (61.7 vs — SWE-bench Pro) but is
 # dense — ~14 tok/s generation on this hardware (measured on the 3.6
 # generation, 2026-07-16; same architecture/footprint) — too slow to lead

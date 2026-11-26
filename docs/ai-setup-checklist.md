@@ -7,7 +7,7 @@ phase is independently useful, so you can stop at any point and come back.
 ## 1. Start the AI core
 
 - [ ] Start Ollama and pull the models (leads + reviewer pool + embeddings —
-      see the model hierarchy table in [README.md](../README.md)):
+      see the model hierarchy table in [model-stack.md](model-stack.md)):
 
   ```bash
   ../makerops-core/ai/ollama/start.sh

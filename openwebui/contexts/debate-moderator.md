@@ -23,7 +23,7 @@ refines a brief before calling `agent_dispatch`.
 > `trellis` container is almost certainly the cause — see the same note in
 > `task-dispatcher.md`. Run `trellis/stop.sh` and retry. The debate itself
 > hits this too: the entrepreneur and monitor personas also use
-> `qwen3.6:35b-64k` (see the model hierarchy table in README.md) — stop
+> `qwen3.6:35b-64k` (see the model hierarchy table in docs/model-stack.md) — stop
 > `trellis` before a debate runs unattended, not just before opening this
 > chat.
 

@@ -24,7 +24,7 @@ Hermes Agent is host-level (not Docker): per-project memory profiles under
 `~/.hermes/profiles/` — see `docs/hermes-setup.md`; never share a profile
 across projects.
 
-## Model hierarchy (canonical table in README.md)
+## Model hierarchy (canonical table in docs/model-stack.md)
 
 Lead-per-domain: best benchmark performer that fits the hardware leads;
 same-expertise models (plus cross-lineage `gpt-oss:20b`) review to catch
@@ -48,7 +48,7 @@ light presets (former
 general lead, now also a general reviewer), `qwen3-embedding:0.6b` RAG.
 Switch leads on benchmark evidence (no local A/B gate); old lead becomes a
 reviewer. On a switch update: `SMOLAGENTS_*_MODEL_ID` env vars,
-`openwebui/contexts/*.md` base models, README table. The debate system
+`openwebui/contexts/*.md` base models, the docs/model-stack.md table. The debate system
 applies the same reviewer-decorrelation reasoning to its critic persona
 (defaults to `gpt-oss:20b-32k` — a num_ctx derivative of the reviewer
 pools' model; the base serves at Ollama's 4k default, which truncates a
