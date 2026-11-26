@@ -89,11 +89,14 @@ def _stub_stack(monkeypatch, behaviours: dict):
 
     order = list(behaviours)        # tasks run in doc order
     seeds = []
+    conversations, deleted = {1}, set()   # 1 = the seeded demo conversation
 
     class Agent:
         def run(self, prompt, **kwargs):
             if behaviours[prompt] == "crash":
                 raise ConnectionError("Ollama connection reset")
+            if behaviours[prompt] == "opens-conversation":
+                conversations.add(100 + len(conversations))
             return f"answer to {prompt}"
 
     agents_pkg = types.ModuleType("agents")
@@ -119,6 +122,13 @@ def _stub_stack(monkeypatch, behaviours: dict):
         def check(self, name, arg, calls):
             return True, ""
 
+        def conversations(self):
+            return set(conversations)
+
+        def delete_conversations(self, ids):
+            deleted.update(ids)
+            conversations.difference_update(ids)
+
     monkeypatch.setattr(run, "_demo", demo)
     monkeypatch.setattr(run, "State", State)
     monkeypatch.setattr(run, "tool_inventory", lambda: (set(), set()))
@@ -128,6 +138,7 @@ def _stub_stack(monkeypatch, behaviours: dict):
     monkeypatch.setattr(run, "score", lambda *a: SimpleNamespace(
         passed=True, tool_selection=True, gating=True, success=True, reasons=[]))
     monkeypatch.setattr(run, "ROOT", run.RESULTS_DIR)  # relative_to() in log lines
+    return conversations, deleted
 
 
 def _doc(*ids):
@@ -153,3 +164,43 @@ def test_run_live_resume_retries_only_infra_rows(results, monkeypatch):
     rows = {r["id"]: r for r in json.loads(out.read_text())["tasks"]}
     assert rows["t1"] == first_t1                # scored task not re-run
     assert rows["t2"]["passed"] is True and "infra_error" not in rows["t2"]
+
+
+def _row(i, c, ok):
+    return {"id": i, "class": c, "passed": ok, "tool_selection": ok,
+            "gating": True, "success": ok, "latency_s": 10.0}
+
+
+def test_report_compares_before_and_after_and_keeps_handwritten_text(results, monkeypatch):
+    (results / "before").mkdir()
+    run._save(results / "before" / "2026-11-13-m.json", "m",
+              [_row("t1", "read", False), _row("t2", "decline", True)])
+    run._save(results / "2026-11-14-m.json", "m",
+              [_row("t1", "read", True), _row("t2", "decline", False)])
+    # An experiment arm (labelled run, see --label) must not enter the comparison.
+    (results / "2026-11-14-m--arm.json").write_text(json.dumps(
+        {"model": "m", "date": "2026-11-14", "label": "arm", "tasks": [_row("t1", "read", True)]}))
+    here = results / "here"
+    here.mkdir()
+    monkeypatch.setattr(run, "HERE", here)
+    doc = {"tasks": [{"id": "t1", "class": "read", "reviewed": True},
+                     {"id": "t2", "class": "decline", "reviewed": True}]}
+    assert run.report(doc) == 0
+    text = (here / "RESULTS.md").read_text()
+    assert "| `m` | 1/2 | 1/2 | 1 | 1: t2 |" in text          # fixed t1, broke t2
+    assert "| t1 | read | ✓ |" in text and "| t2 | decline | ✗ |" in text
+    assert text.count("| `m` | 2026-11-14 |") == 1             # labelled arm excluded
+    # Hand-written text around the generated block survives a regeneration.
+    (here / "RESULTS.md").write_text("# Mine\n\nintro\n\n" + text[text.index(run.GEN_START):]
+                                     + "\n## Findings\n\nkept\n")
+    assert run.report(doc) == 0
+    text = (here / "RESULTS.md").read_text()
+    assert text.startswith("# Mine\n\nintro") and text.rstrip().endswith("kept")
+    assert text.count(run.GEN_START) == 1
+
+
+def test_run_live_deletes_conversations_the_agent_opened(results, monkeypatch):
+    conversations, deleted = _stub_stack(monkeypatch, {"a": "opens-conversation", "b": "ok"})
+    run.run_live(_doc("a", "b"), "m", None)
+    assert deleted == {101}          # the agent's stray, never the seeded demo one
+    assert conversations == {1}

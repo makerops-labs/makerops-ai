@@ -51,7 +51,7 @@ uv run --no-project --with pyyaml python evals/run.py --dry-run
 uv run --frozen --project smolagents --with pyyaml \
     python evals/run.py --model qwen3.6:35b-64k            # --only id1,id2 to subset
 
-# 3. Comparison table from evals/results/*.json
+# 3. Regenerate the tables in RESULTS.md (current vs results/before/)
 uv run --no-project --with pyyaml python evals/run.py --report
 ```
 
@@ -71,6 +71,11 @@ being checked.
 - `scoring.py`: pure validation and scoring logic (unit-tested in
   `tests/`, no network).
 - `run.py`: the CLI: dry run, live run, report.
-- `results/<date>-<model>.json`: raw per-task results, including tool calls
-  and answers.
-- `RESULTS.md`: the generated comparison table (only after review).
+- `results/<date>-<model>.json`: raw per-task results of the current runs,
+  including tool calls and answers.
+- `results/before/`: the archived baseline from before the harness fixes,
+  kept so the report can show what each fix changed.
+- `results/experiments/`: labelled experiment arms; local only,
+  never part of the report.
+- `RESULTS.md`: findings (hand-written) around generated tables. `--report`
+  rewrites only the text between its markers.

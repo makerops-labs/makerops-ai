@@ -19,3 +19,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# Labelled eval experiment arms: local only, never part of RESULTS.md
+evals/results/experiments/
