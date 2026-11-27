@@ -2,53 +2,100 @@
 
 [![CI](https://github.com/makerops-labs/makerops-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/makerops-labs/makerops-ai/actions/workflows/ci.yml)
 
-![MakerOps AI](assets/images/makerops-ai-hero.png)
+**Local AI agents that run a small manufacturer's back office, with a human
+approving every action that matters.** They run entirely on local models: no
+API keys, no per-token costs, and no data leaving the machine.
 
-The agentic AI ecosystem layered on the public
-[makerops-core](https://github.com/makerops-labs/makerops-core) stack: chat
-UI, agent workspace, tool server, private web search, speech, and
-persistent-memory tooling — everything that composes the foundational
-inference services into an agentic system. Runs entirely on-premise; no API
-keys, no data leaving the host, no per-token costs.
+> **Demo video:** coming soon, a 2–3 minute walkthrough of the scenario below
+> ([shot list](demo/VIDEO_SCRIPT.md)).
 
-Split from core (2026-07-04, core's public history scrubbed of AI-ecosystem
-work) to keep the two repos' version control separate; both are now public,
-but the split itself stays — this repo holds the agentic AI tooling, core
-holds the business services and foundational GPU services (Ollama, ComfyUI).
+## The scenario
 
-## Prerequisites (from makerops-core)
+A customer emails asking for 20 EN-100 enclosures. Asked to handle it, the
+ops agent:
 
-These services depend on the sibling checkout of `makerops-core`:
+1. reads the request in the help desk (FreeScout) and the bill of materials
+   in inventory (InvenTree);
+2. works out what's short (only 8 lids in stock) and who supplies it;
+3. raises a draft purchase order for the shortfall; *placing* it comes back
+   `PENDING APPROVAL`;
+4. drafts a reply that promises only what stock allows; *sending* it is
+   held for approval too;
+5. a human approves or rejects each held action at `/approvals`.
 
-- **Ollama** (`makerops-core/ai/ollama`, port 11434) — serves every LLM here.
-  Model pulls are listed in [docs/ai-setup-checklist.md](docs/ai-setup-checklist.md).
-- **ComfyUI** (`makerops-core/ai/comfyui`, port 8188) — image generation,
-  driven via mcp-tools.
-- **name-proxy** (`makerops-core/infrastructure/name-proxy`) — optional
-  `*.localhost` names for the services here; enable with the drop-in in
-  [proxy/](proxy/) (install/uninstall = copy/delete one file).
-- NVIDIA Container Toolkit for the GPU services (documented in
-  makerops-core's `ai/README.md`).
+The demo data is seeded and reset by [demo/](demo/); the same scenario
+drives the evaluation below.
 
-## Setup
+## Architecture
 
-The complete, ordered walkthrough is
-**[docs/ai-setup-checklist.md](docs/ai-setup-checklist.md)** — work it top to
-bottom; each phase is independently useful. In outline:
+![Architecture: Open WebUI and smolagents call the mcp-tools server, which gates writes through human approvals before they reach InvenTree, FreeScout and the rest of the makerops-core stack; all models are served locally by Ollama](assets/architecture.svg)
 
-1. Start Ollama (in makerops-core) and pull the models from the hierarchy
-   table, including the `qwen3.5:9b-64k` derivative (checklist §1).
-2. Start SearXNG, then mcp-tools (note the approvals URL+token it prints),
-   then Open WebUI / smolagents / speech. Each `start.sh` creates `.env`
-   from `.env.example` on first run.
-3. Add service API tokens to `mcp-tools/.env` one at a time (checklist §2) —
-   domains without a token simply stay unmounted.
-4. Do the UI-side wiring in Open WebUI (checklist §3–4): web search, tool
-   connections, RAG embedding model, audio, and the workspace-model presets
-   from [openwebui/contexts/](openwebui/contexts/) (git is the source of
-   truth; the UI stores them in its DB).
-5. Optional: name-proxy drop-ins ([proxy/README.md](proxy/README.md)) and
-   Hermes ([docs/hermes-setup.md](docs/hermes-setup.md)).
+## What this demonstrates
+
+- **Approval-gated tool use with per-tool policy.** Every write tool has a
+  tier: additive writes run and notify; destructive or customer-facing
+  ones return `PENDING APPROVAL #id` and wait for a human
+  ([mcp-tools/tools/policy.py](mcp-tools/tools/policy.py), unit-tested).
+- **Progressive tool disclosure.** Agents get a short manifest and look up
+  domains and tools on demand, instead of carrying the whole catalog in context
+  ([Tool discovery](#tool-discovery-progressive-disclosure)).
+- **Multi-agent delegation.** A manager agent delegates to researcher, coder,
+  ops and auditor agents, plus long-running engagement queues with their own
+  review gates ([smolagents/README.md](smolagents/README.md)).
+- **Cross-lineage review.** Reviewers are deliberately different model
+  families (gpt-oss alongside Qwen), so they don't share the lead model's
+  blind spots ([docs/model-stack.md](docs/model-stack.md)).
+- **Sandboxed execution.** Agent commands run in throwaway, resource-capped
+  containers with one project directory mounted and no Docker socket
+  ([sandbox/](sandbox/)).
+- **Self-improvement with rollback.** Agents propose code changes as diffs; a
+  human approves each one; the change is deployed, health-checked and
+  automatically reverted if it fails
+  ([Self-improvement loop](#self-improvement-loop)).
+- **Fully local inference.** Every model runs on Ollama on one 16 GB GPU;
+  the larger ones spill partly into system RAM.
+
+## Evaluation
+
+29 human-reviewed tasks from the scenario above, run on four local models;
+each task runs on a freshly seeded demo, using the real tools and approval gate.
+
+| Model | Pass | Median latency |
+| --- | ---: | ---: |
+| `qwen3.8:27b-64k` | 26/29 | 88 s |
+| `qwen3.6:35b-64k` | 24/29 | 28 s |
+| `qwen3.5:9b-64k` | 22/29 | 15 s |
+| `gpt-oss:20b-32k` | 19/29 | 21 s |
+
+- The first run passed 12–16 of 29. Reading its failures call by call
+  turned up four tool-layer bugs (#12, #13, #16, #17); fixing them produced
+  the numbers above, with the same models and tasks.
+- Asked to do something risky (tell a customer "all 20 ship today" with 8 in
+  stock, zero the whole inventory), models often act instead of asking. The
+  approval gate held every one of those actions.
+- A live-state check caught a model reporting a draft it never created.
+
+Full findings, per-task results and method: [evals/RESULTS.md](evals/RESULTS.md).
+
+## How this was built
+
+The maintainer did the architecture, decisions and review. Implementation
+was AI-assisted with [Claude Code](https://claude.com/claude-code), working
+under repository conventions ([CLAUDE.md](CLAUDE.md)), CI (policy tests,
+lint, eval dry run) and a human-reviewed pull request for every change. The
+evaluation was used the same way: its failures were traced to root causes,
+and those causes were fixed in separate, tested PRs.
+
+## Quick start
+
+1. Bring up [makerops-core](https://github.com/makerops-labs/makerops-core)
+   (Ollama plus InvenTree and FreeScout for the scenario).
+2. Work through [docs/ai-setup-checklist.md](docs/ai-setup-checklist.md);
+   each phase is useful on its own.
+3. Seed the scenario with `python3 demo/seed.py` ([demo/README.md](demo/README.md)),
+   then run the eval with [evals/README.md](evals/README.md).
+
+---
 
 ## Services
 
@@ -111,58 +158,6 @@ smolagents injects it into all agents' instructions (`agents/context.py`),
 Open WebUI presets start with [contexts/_baseline.md](openwebui/contexts/_baseline.md),
 and Hermes profiles learn it once into persistent memory.
 
-### Model hierarchy
-
-The stack follows a **lead-per-domain** convention: each expertise domain has
-one lead model (the best benchmark performer that runs on this hardware), and
-multi-model review uses same-expertise models with *lower* benchmark scores as
-supplementary reviewers to catch the lead's blind spots. Reviewer pools
-deliberately include a different lineage (gpt-oss, OpenAI) so the models don't
-share training blind spots. Since 2026-08-26, "best that runs on this
-hardware" splits by **workload latency sensitivity**, not just by domain:
-interactive/chat-facing roles keep the fastest good-enough model, while
-unattended background queues (devteam engineer phases, the hardware
-specialist below, reviewers) can afford a slower, higher-benchmark model —
-the machine sits idle between jobs anyway. See `docs/model-stack.md`'s
-2026-08-26 pass. **Any `qwen3.8:27b` usage in this stack means the
-`-64k` derivative, never the bare tag** — the bare tag's reasoning
-exhausts Ollama's 4k default context before producing output (observed
-2026-08-28; see that doc's 2026-08-28 note).
-
-| Domain | Lead | Reviewers |
-| --- | --- | --- |
-| Coding (interactive — chat coder, Coding Assistant preset) | `qwen3.6:35b` (73.4% SWE-bench Verified) | `qwen3.8:27b-64k`, `gpt-oss:20b` |
-| Coding (background — devteam engineer phases) | `qwen3.8:27b-64k` (dense; successor to qwen3.6:27b — SWE-bench Pro 61.7% vs 53.5%, Terminal-Bench 2.1 73.0% vs 63.4%; same footprint, ~14 tok/s here, fine for unattended phases; **-64k required** — this model's reasoning exhausts Ollama's 4k default before producing output, observed 2026-08-28) | — |
-| KiCad build-plans (hardware specialist) | `qwen3.8:27b-64k` (dense, structure-precise; same as above — reviewer/specialist-class speed, not the interactive lead) | — |
-| Default chat / task dispatch | `qwen3.6:35b-64k` (derivative, checklist §1) | — |
-| General / agents / planning | `qwen3.6:35b-64k` (same derivative — one resident general model for chat and agents) | `qwen3.5:9b`, `gpt-oss:20b` |
-| Vision understanding | `qwen3.5:9b` / `qwen3.6:35b` (both natively multimodal) | — |
-| Image generation | FLUX.1 (ComfyUI, in makerops-core) | — |
-| Image-to-3D | `TRELLIS-image-large` 1.2B (trellis service, GPU on-demand) | — |
-| Speech (TTS, agent-usable) | Kokoro-82M (speech service, CPU) | — |
-| Embeddings (RAG) | `qwen3-embedding:0.6b` | — |
-
-The review workflow is exposed two ways: the **Code Auditor / General
-Auditor** presets in [openwebui/contexts/](openwebui/contexts/) (manual), and
-the smolagents **auditor** agent (automated — see
-[smolagents/README.md](smolagents/README.md)). When a new model release beats
-a lead on domain benchmarks and fits the hardware, the old lead becomes a
-reviewer candidate and configs move on: `SMOLAGENTS_*_MODEL_ID` env vars, the
-context presets, and this table.
-
-The **debate** system (below) applies the same reviewer-decorrelation
-reasoning to a different kind of task: its entrepreneur and monitor personas
-default to the default-chat lead `qwen3.6:35b-64k` (both make judgment calls
-where quality matters more than the multi-minute VRAM-swap cost, which is
-fine for an unattended background tool), while its critic persona defaults to
-`gpt-oss:20b-32k` — a context-bumped derivative (checklist §5h) of the same
-cross-lineage model used in the reviewer pools — specifically so it doesn't
-share the other two personas' blind spots. (The derivative exists because
-the base model serves at Ollama's 4k default context, which truncates a
-debate turn mid-answer; the reviewer pools still use base `gpt-oss:20b`,
-whose short review prompts fit, but a long artifact review would hit the
-same ceiling — switch the pool to the -32k derivative if that shows up.)
-
 ### Self-improvement loop
 
 The stack can research, evaluate, and propose improvements to *itself* —
@@ -200,7 +195,7 @@ restart only proves the new code *runs*; it doesn't prove it's *correct*
 — that judgment call is why review exists. See
 [docs/ai-setup-checklist.md](docs/ai-setup-checklist.md) "Self-improvement
 loop" for the one-time setup and a full walkthrough of the expected
-process, and this file's Gotchas section below for failure modes to watch
+process, and [docs/operations-notes.md](docs/operations-notes.md) for failure modes to watch
 for.
 
 Trigger a review on demand by asking any dispatch-capable chat (e.g. Task
@@ -208,58 +203,6 @@ Dispatcher) to "review the stack's recent performance and propose
 improvements" — this always includes the external trends sweep, not just
 internal history — or set up the optional weekly n8n cron workflow
 described in the checklist.
-
-### Debate system
-
-A fixed team of three personas — **entrepreneur** (proposes and defends the
-strongest concrete version of an idea), **critic** (independent devil's
-advocate), and **monitor** (neutral facilitator; decides
-continue/redirect/conclude) — argues a goal over several rounds. Because all
-of them share one GPU, they run one at a time in series, correspondence-chess
-style: each turn is a background job that writes its argument to a file and
-automatically queues the next persona's turn once it finishes — no polling
-loop or scheduler to babysit, it reuses the same file-based job-queue
-mechanism as `agent_dispatch` (see `smolagents/agents/jobs.py`).
-
-Each round is kept small (a one-line abstract plus a focused argument,
-hard-capped in size), but the debate as a whole stays navigable via a
-**manifest**: a sequenced, append-only index (round number, persona, word
-count, one-line description, file path) that a turn's own prompt renders
-compactly — recent rounds in full, older ones as a description a persona can
-choose to read in full or skip, so context stays flat no matter how long the
-debate runs. Round files are prose by contract, doubly enforced: each
-persona carries an output contract plus a format check that rejects
-code/JSON answers with corrective feedback (`agents/debate/format.py`), and
-the worker deterministically unwraps anything that still arrives
-code-fenced before it becomes the next turn's input.
-
-**Every debate ends with a human-facing synthesis, automatically.** When
-the monitor concludes (or the round cap is hit), one closing monitor turn
-writes the final report — what was decided or learned, the strongest
-surviving objections, concrete next steps, open questions — to the
-session's `summary.md`, served by `debate_result`. That report is the
-deliverable; the round files are the working record behind it. A turn runs
-its persona **directly** — the worker assembles the persona's task,
-enforces the prose contract, and regex-parses the monitor's verdict, all in
-deterministic code; there is deliberately no orchestrator LLM between the
-worker and a persona (an earlier relay design failed constantly by
-re-typing arguments into giant string literals). Personas carry their own
-web tools for grounding claims; deeper sourced research is available via
-the dedicated **researcher** agent through the general manager or the
-Researcher preset.
-
-Start one from the **Debate Moderator** chat preset (it refines an ambiguous
-ask into a concrete goal/mode/deliverables brief with you first, the same way
-Task Dispatcher refines a brief before `agent_dispatch`), or call
-`debate_start` directly if you already have one. `mode="narrow"` keeps a
-tight, well-scoped question concrete (6 rounds by default); `mode="broad"`
-lets the personas research and range wider over an open-ended one (16 rounds
-by default). Track a running debate with `debate_status` / `debate_manifest`
-/ `debate_read_round`, and read the final synthesis with `debate_result`; a
-turn that crashes or ends `needs_attention`/`failed`
-halts auto-advancement (status `stuck`, with a `stop_reason`) rather than
-silently stalling or queuing garbage into the next turn — recover it with
-`debate_resume` or give up with `debate_cancel`.
 
 ### Project workspaces
 
@@ -345,6 +288,66 @@ recovers with `devteam_resume`, or `devteam_cancel` ends the engagement
 a machine-parseable milestone plan is parked `stuck` too — the plan is
 validated by deterministic worker code, never guessed.
 
+## Experimental
+
+These components work but are less mature and less tested than the core
+above. They're kept here for completeness: the career and investment agents
+([smolagents/README.md](smolagents/README.md)), the Alexa voice bridge
+([docs/alexa-voice-setup.md](docs/alexa-voice-setup.md)), TRELLIS image-to-3D
+([trellis/](trellis/)), the debate system and hardware engagements below.
+
+### Debate system
+
+A fixed team of three personas — **entrepreneur** (proposes and defends the
+strongest concrete version of an idea), **critic** (independent devil's
+advocate), and **monitor** (neutral facilitator; decides
+continue/redirect/conclude) — argues a goal over several rounds. Because all
+of them share one GPU, they run one at a time in series, correspondence-chess
+style: each turn is a background job that writes its argument to a file and
+automatically queues the next persona's turn once it finishes — no polling
+loop or scheduler to babysit, it reuses the same file-based job-queue
+mechanism as `agent_dispatch` (see `smolagents/agents/jobs.py`).
+
+Each round is kept small (a one-line abstract plus a focused argument,
+hard-capped in size), but the debate as a whole stays navigable via a
+**manifest**: a sequenced, append-only index (round number, persona, word
+count, one-line description, file path) that a turn's own prompt renders
+compactly — recent rounds in full, older ones as a description a persona can
+choose to read in full or skip, so context stays flat no matter how long the
+debate runs. Round files are prose by contract, doubly enforced: each
+persona carries an output contract plus a format check that rejects
+code/JSON answers with corrective feedback (`agents/debate/format.py`), and
+the worker deterministically unwraps anything that still arrives
+code-fenced before it becomes the next turn's input.
+
+**Every debate ends with a human-facing synthesis, automatically.** When
+the monitor concludes (or the round cap is hit), one closing monitor turn
+writes the final report — what was decided or learned, the strongest
+surviving objections, concrete next steps, open questions — to the
+session's `summary.md`, served by `debate_result`. That report is the
+deliverable; the round files are the working record behind it. A turn runs
+its persona **directly** — the worker assembles the persona's task,
+enforces the prose contract, and regex-parses the monitor's verdict, all in
+deterministic code; there is deliberately no orchestrator LLM between the
+worker and a persona (an earlier relay design failed constantly by
+re-typing arguments into giant string literals). Personas carry their own
+web tools for grounding claims; deeper sourced research is available via
+the dedicated **researcher** agent through the general manager or the
+Researcher preset.
+
+Start one from the **Debate Moderator** chat preset (it refines an ambiguous
+ask into a concrete goal/mode/deliverables brief with you first, the same way
+Task Dispatcher refines a brief before `agent_dispatch`), or call
+`debate_start` directly if you already have one. `mode="narrow"` keeps a
+tight, well-scoped question concrete (6 rounds by default); `mode="broad"`
+lets the personas research and range wider over an open-ended one (16 rounds
+by default). Track a running debate with `debate_status` / `debate_manifest`
+/ `debate_read_round`, and read the final synthesis with `debate_result`; a
+turn that crashes or ends `needs_attention`/`failed`
+halts auto-advancement (status `stuck`, with a `stop_reason`) rather than
+silently stalling or queuing garbage into the next turn — recover it with
+`debate_resume` or give up with `debate_cancel`.
+
 ### Hardware engagements (design a circuit from a desired outcome)
 
 The same engagement mechanism as devteam above, applied to circuit design:
@@ -399,9 +402,49 @@ too, same as devteam. For quick ad hoc questions outside a formal
 engagement, the lightweight **KiCad Specialist** preset talks directly to
 the specialist's persona with no engagement machinery attached.
 
+## Setup in detail
+
+This repo is the agentic layer. [makerops-core](https://github.com/makerops-labs/makerops-core)
+holds the business services and the foundational GPU services (Ollama,
+ComfyUI). The two are kept as separate repositories on purpose.
+
+### Prerequisites (from makerops-core)
+
+These services depend on the sibling checkout of `makerops-core`:
+
+- **Ollama** (`makerops-core/ai/ollama`, port 11434) — serves every LLM here.
+  Model pulls are listed in [docs/ai-setup-checklist.md](docs/ai-setup-checklist.md).
+- **ComfyUI** (`makerops-core/ai/comfyui`, port 8188) — image generation,
+  driven via mcp-tools.
+- **name-proxy** (`makerops-core/infrastructure/name-proxy`) — optional
+  `*.localhost` names for the services here; enable with the drop-in in
+  [proxy/](proxy/) (install/uninstall = copy/delete one file).
+- NVIDIA Container Toolkit for the GPU services (documented in
+  makerops-core's `ai/README.md`).
+
+### Setup
+
+The complete, ordered walkthrough is
+**[docs/ai-setup-checklist.md](docs/ai-setup-checklist.md)** — work it top to
+bottom; each phase is independently useful. In outline:
+
+1. Start Ollama (in makerops-core) and pull the models from the hierarchy
+   table ([docs/model-stack.md](docs/model-stack.md)), including the `qwen3.5:9b-64k` derivative (checklist §1).
+2. Start SearXNG, then mcp-tools (note the approvals URL+token it prints),
+   then Open WebUI / smolagents / speech. Each `start.sh` creates `.env`
+   from `.env.example` on first run.
+3. Add service API tokens to `mcp-tools/.env` one at a time (checklist §2) —
+   domains without a token simply stay unmounted.
+4. Do the UI-side wiring in Open WebUI (checklist §3–4): web search, tool
+   connections, RAG embedding model, audio, and the workspace-model presets
+   from [openwebui/contexts/](openwebui/contexts/) (git is the source of
+   truth; the UI stores them in its DB).
+5. Optional: name-proxy drop-ins ([proxy/README.md](proxy/README.md)) and
+   Hermes ([docs/hermes-setup.md](docs/hermes-setup.md)).
+
 ### Startup order
 
-Ollama first (in makerops-core, with the models from the hierarchy table
+Ollama first (in makerops-core, with the models from the [hierarchy table](docs/model-stack.md#model-hierarchy)
 pulled), then SearXNG, then mcp-tools, then Open WebUI, smolagents, and/or
 speech. SearXNG, mcp-tools, and speech have no GPU dependency and are safe to
 leave running continuously. TRELLIS is the opposite: a generation needs most
@@ -433,73 +476,15 @@ version control; every cross-reference from the public repo is local-only:
   AI-assistant sessions the two-repo layout and the never-commit-to-core
   rule.
 
----
+## More documentation
 
-## Tips, Gotchas & Debugging
+- [docs/model-stack.md](docs/model-stack.md): the model hierarchy (which model
+  leads which domain, and its reviewers) and the dated evaluation notes behind it.
+- [docs/operations-notes.md](docs/operations-notes.md): tips, gotchas and
+  debugging.
+- [docs/ai-setup-checklist.md](docs/ai-setup-checklist.md): the full setup
+  walkthrough.
 
-Hard-won specifics — check here before deep-diving (core-side basics like
-`.env` inline comments and WSL2 DNS are in makerops-core's README):
-
-- **`docker compose restart` does NOT re-read `.env`** — token/policy/model
-  changes need `docker compose -p <project> up -d` (recreate). Code changes
-  in smolagents/mcp-tools only need a restart (source is bind-mounted);
-  rebuild only when `pyproject.toml`/`uv.lock` change.
-- **First reply after a model switch is slow.** Only one model lives in VRAM
-  at a time; swapping loads ~7–23 GB. `docker exec ollama ollama ps` shows
-  what's loaded and the CPU/GPU split.
-- **Large-model OOM signature**: `llama-server process has terminated:
-  signal: killed` during load = not enough free system RAM for the VRAM
-  overflow. Free RAM or raise the WSL2 cap (24 GB works for the current
-  hierarchy on a 16 GB GPU). **Check `docker ps` for a running `trellis`
-  container first** — its idle-unload only frees VRAM, the container still
-  holds ~5.4 GB of host RAM the whole time it's up, which is enough by
-  itself to starve a `qwen3.6:35b*` load. `trellis/stop.sh` before using
-  Coding Assistant, Task Dispatcher, or any 35b-class chat.
-- **A chat "has no tools"?** Tools attach per workspace-model, per-base-model
-  (Admin Settings → Models), or per-chat (+ menu) — a bare-model thread has
-  none. Old threads also bias the model toward its earlier "no tools"
-  claims; test in a fresh thread. Set **Function calling: Native** for the
-  qwen leads.
-- **Domain missing from tools?** `curl :8099/healthz` — domains without an
-  API token are skipped at startup (by design). Add the token to
-  `mcp-tools/.env` and recreate.
-- **MCP client hangs forever** → it's pointed at an unmounted domain (404s
-  hang mcpadapt). smolagents pre-checks `/healthz` (`agents/tools.py`); keep
-  that pattern in new consumers. Endpoints need the trailing slash
-  (`/mcp/web/`); bare paths get a 307.
-- **Agents combining several domains** must merge tools with
-  `agents/tools.get_domains_tools(*domains)` — every endpoint carries
-  `tools_help`, and duplicate tool names crash agent init.
-- **Long tool lists degrade local models.** Attach few domains per
-  agent/preset; let `tools_help` handle discovery. Prefer `/mcp/<domain>/`
-  over the composed `/mcp/`.
-- **Open WebUI settings live in its DB**, not in git — presets, embedding
-  model, audio, connections are recreate-from-git per the checklist. Its
-  web-search env vars seed the DB on first boot only.
-- **Don't commit runtime state**: `.env` and `data/` are gitignored
-  everywhere; committed config must not live in a `config/` dir (that glob
-  is ignored).
-- **Logs**: `docker compose -p <project> logs -f`; agent traces can go to an
-  OTLP collector via `OTEL_EXPORTER_OTLP_ENDPOINT` (smolagents `.env`).
-- **Never commit this repo's content into makerops-core** — see
-  [CLAUDE.md](CLAUDE.md) and the Local integration section above.
-- **A `propose_code_change` diff is rejected before you ever see it** if
-  it's not valid Python syntax (`ast.parse` pre-check) — that only catches
-  syntax errors, not a syntactically valid but wrong change; review is
-  still what catches those.
-- **`redeploy.reverted` in `/approvals` means the file is already back to
-  its prior state** — the change was tried, failed its health check, and
-  was rolled back automatically. `git diff`/`git log` on the working tree
-  shows exactly what was attempted; there's nothing to manually undo.
-- **Approving a change to mcp-tools' own source restarts the process
-  handling your approval, mid-flow** — expected, and exactly why
-  `redeploy` is a separate service rather than mcp-tools restarting
-  itself: it keeps working (and reports the outcome) independent of
-  whether mcp-tools is reachable at that moment.
-- **Rejecting a proposal is cheap** — no retry pressure, no penalty;
-  `maintainer` files independent proposals each review cycle.
-
----
 
 ## License
 
@@ -509,8 +494,6 @@ MakerOps AI is **source-available**, not open source. You may use it under eithe
 **Not permitted under these licenses:** Selling the software, building it into products or services sold to others, running it as a paid hosted service, or distributing it as part of a commercial offering. For those uses, contact the copyright holder through the makerops-labs GitHub organization to discuss a separate license.
 
 Third-party software integrated by this stack (Open WebUI, smolagents, SearXNG, FastMCP, speaches, Kokoro-FastAPI, Hermes Agent, TRELLIS) is governed by its own license. See [NOTICE](NOTICE) for the full list of upstream projects and their licenses.
-
----
 
 ## System Requirements
 
