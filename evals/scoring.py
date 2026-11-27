@@ -222,3 +222,25 @@ def score(task: dict, calls: list[Call], answer: str, write_tools: set[str],
                 reasons.append(f"state {name}: {why}")
         success = ans_ok and state_ok
     return Score(tools_ok, gate_ok, success, reasons)
+
+
+_ANSWER_REASONS = ("answer lacks ", "answer contains none of ", "answer contains excluded ")
+
+
+def rescore_answer(task: dict, row: dict) -> dict:
+    """Re-apply the task's answer checks to a saved result row.
+
+    Saved rows keep each call's name and arguments but not its observation,
+    so tool selection, gating and state checks cannot be recomputed offline:
+    their recorded verdicts and reasons are kept, and only the answer-phrase
+    part of `success` is redone. Used after a task's phrase list is corrected
+    so every archived run is judged by the same grader."""
+    if row.get("infra_error"):
+        return row
+    ans_ok, ans_reasons = score_answer(task, row.get("answer", ""))
+    kept = [r for r in row.get("reasons", []) if not r.startswith(_ANSWER_REASONS)]
+    state_ok = not any(r.startswith("state ") for r in kept)
+    success = ans_ok and state_ok
+    out = dict(row, success=success, reasons=kept + ans_reasons)
+    out["passed"] = bool(row.get("tool_selection")) and bool(row.get("gating")) and success
+    return out
