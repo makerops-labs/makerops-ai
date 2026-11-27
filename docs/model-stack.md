@@ -67,6 +67,35 @@ debate turn mid-answer; the reviewer pools still use base `gpt-oss:20b`,
 whose short review prompts fit, but a long artifact review would hit the
 same ceiling — switch the pool to the -32k derivative if that shows up.)
 
+## Inference engine per model (2026-11-27)
+
+Two engines run side by side. A model's engine is chosen on a same-day, same-conditions
+bench plus at least two ops-eval runs.
+- **Ollama** (makerops-core `ai/ollama`, :11434).
+- **llama.cpp router** (makerops-core `ai/llamacpp`, :8110). Idle-sleeps after 300 s so the
+  two engines share the GPU.
+
+smolagents sends a model to llama.cpp only when its id is listed in
+`SMOLAGENTS_LLAMACPP_MODELS` (see `smolagents/.env.example`). Open WebUI still talks to
+Ollama only.
+
+| Model | Engine | Evidence |
+|---|---|---|
+| `qwen3.6:35b-64k` | **llama.cpp** | Decode 66 vs 50 tok/s; prefill 2445 vs 1364 tok/s at 18k tokens; ~2.6 vs ~14.5 GiB locked host RAM; ops eval 22 & 24 vs 22 & 22/29. Text-only there: vision for this model stays on Ollama (adding the projector would overflow the tuned VRAM split). |
+| `qwen3.6:35b` (coding tag) | Ollama | Not yet moved; same weights, so expected to behave like the -64k entry. |
+| `qwen3.5:9b-64k` | Ollama | Tie: decode 87.5 vs 85.5 tok/s, equal prefill. |
+| `gpt-oss:20b-32k` | Ollama | llama.cpp decodes +27% (149 vs 117 tok/s), but its gpt-oss (harmony) parser returns HTTP 500 on ~22% of tool-calling turns ("does not match the expected peg-native format"): ops eval 5 & 7 vs 15 & 18/29. Plain completions are at parity. Re-test when the parser changes. |
+| `qwen3.8:27b-64k` | Ollama | Ollama decodes 7.8 tok/s. Best llama.cpp was 6.5 (40 GPU layers + MTP draft); plain split 3.2–4.5. Ollama's Modelfile already uses the model's MTP heads (`draft_num_predict 4`). |
+| `qwen3-embedding:0.6b` | Ollama | Tie: outputs equivalent (cosine ≥ 0.9996). Same file on both engines. |
+
+**llama.cpp gotchas** (each one cost hours):
+- smolagents' default `tool_choice: "required"` makes llama.cpp loop until the context
+  fills; `agents/model.py` omits the field.
+- Router model ids must not contain `:`.
+- Ollama's GGUF blobs don't load in upstream llama.cpp.
+- llama-server's 8 GB default host prompt cache is turned off (`cache-ram = 0`). Ollama
+  doesn't expose it, and it caused 35b OOM kills.
+
 ## Installed models
 
 | Model | Params / arch | Quant | Disk | Max ctx | Capabilities | Strengths | Weaknesses | Best for | Avoid for |
