@@ -227,6 +227,6 @@ one-line description — useful for deciding what's worth reading in full),
 or `debate_read_round` (one round's complete text); a debate stuck after a
 crash or a failed turn surfaces via `debate_status`'s `stop_reason` and is
 recovered with `debate_resume` or ended with `debate_cancel`. See the
-model hierarchy table for why the entrepreneur/monitor personas default to
+model hierarchy table in [docs/model-stack.md](../../docs/model-stack.md) for why the entrepreneur/monitor personas default to
 the same lead as Task Dispatcher while the critic deliberately uses a
 different model lineage.

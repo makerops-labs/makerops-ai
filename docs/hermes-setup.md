@@ -40,7 +40,7 @@ printf 'FROM qwen3.5:9b\nPARAMETER num_ctx 64000\n' | \
 `qwen3.5:9b-64k` supports native tool calling and stays quick enough for an
 interactive host-level agent. The general-domain lead is now
 `qwen3.6:35b-64k` (see the model hierarchy table in
-[README.md](../README.md)) — use it here instead if answer quality matters
+[docs/model-stack.md](model-stack.md)) — use it here instead if answer quality matters
 more than latency, minding the stop-trellis-first RAM gotcha.
 
 ## Profile isolation policy — read before first use

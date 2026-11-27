@@ -49,7 +49,7 @@ def _model_list(env_var: str, default: str) -> list[str]:
 # Reviewer pools for the audit agent: same-expertise models used to catch
 # the lead model's blind spots. gpt-oss is a different lineage (OpenAI vs
 # Qwen), which decorrelates the review. See the model hierarchy table in
-# README.md. qwen3.8:27b-64k (successor to qwen3.6:27b, swapped 2026-08-26)
+# docs/model-stack.md. qwen3.8:27b-64k (successor to qwen3.6:27b, swapped 2026-08-26)
 # out-benchmarks the 35b coding lead (61.7 vs — SWE-bench Pro) but is
 # dense — ~14 tok/s generation on this hardware (measured on the 3.6
 # generation, 2026-07-16; same architecture/footprint) — too slow to lead
@@ -68,6 +68,13 @@ GENERAL_REVIEW_MODEL_IDS = _model_list("SMOLAGENTS_GENERAL_REVIEW_MODEL_IDS",
 
 DATA_DIR = os.environ.get("SMOLAGENTS_DATA_DIR", "./data")
 MAX_STEPS = int(os.environ.get("SMOLAGENTS_MAX_STEPS", "12"))
+
+# Per-task tool filtering for the ops agent (agents/tool_filter.py).
+# off = every tool every run (default); domain = top-k tools pull in their whole
+# domain; topk = only the top-k tools. Embeddings come from Ollama.
+OPS_TOOL_FILTER = os.environ.get("SMOLAGENTS_OPS_TOOL_FILTER", "off").strip().lower()
+OPS_TOOL_FILTER_K = int(os.environ.get("SMOLAGENTS_OPS_TOOL_FILTER_K", "8"))
+EMBED_MODEL_ID = os.environ.get("SMOLAGENTS_EMBED_MODEL_ID", "qwen3-embedding:0.6b")
 
 # Manager orchestration: extra step headroom, periodic replanning, and the
 # segment cap for long jobs that continue from a workspace synopsis. Verified

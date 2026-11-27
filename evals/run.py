@@ -85,9 +85,11 @@ def _demo(script: str, attempts: int = 3, backoff_s: float = 15) -> None:
     raise SetupError(f"demo/{script} failed {attempts} times: {last[0]}")
 
 
-def _results_path(model: str, resume: bool) -> Path:
-    """Today's results file, or with --resume the newest existing one for the model."""
-    safe = model.replace(":", "_").replace("/", "_")
+def _results_path(model: str, resume: bool, label: str = "") -> Path:
+    """Today's results file, or with --resume the newest existing one for the model.
+    A --label (an experiment arm, e.g. "toolfilter-domain") is part of the name,
+    so arms of the same model on the same day never overwrite each other."""
+    safe = model.replace(":", "_").replace("/", "_") + (f"--{label}" if label else "")
     if resume:
         existing = sorted(p for p in RESULTS_DIR.glob(f"????-??-??-{safe}.json")
                           if p.name[11:] == f"{safe}.json")
@@ -112,12 +114,14 @@ def _resumable_rows(path: Path, model: str, task_ids: set[str]) -> list[dict]:
             if r.get("id") in task_ids and not r.get("infra_error")]
 
 
-def _save(path: Path, model: str, rows: list[dict]) -> None:
+def _save(path: Path, model: str, rows: list[dict], label: str = "") -> None:
     """Write after every task (atomically), so a crash loses at most one task."""
     RESULTS_DIR.mkdir(exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps({"model": model, "date": path.name[:10], "agent": "ops",
-                               "tasks": rows}, indent=1))
+    meta = {"model": model, "date": path.name[:10], "agent": "ops"}
+    if label:
+        meta["label"] = label
+    tmp.write_text(json.dumps({**meta, "tasks": rows}, indent=1))
     tmp.replace(path)
 
 
@@ -187,6 +191,27 @@ class State:
         env = load_env()
         self.inv, self.fs, self.results = inventree(env), freescout(env), results
         self.baseline = self._stock_by_ipn()
+
+    def conversations(self) -> set[int]:
+        """Ids of every conversation in the demo-only mailbox."""
+        from _api import find_mailbox
+        box = find_mailbox(self.fs)
+        if not box:
+            return set()
+        page = self.fs.get("/api/conversations", mailboxId=box["id"], pageSize=100)
+        return {c["id"] for c in page.get("_embedded", {}).get("conversations", [])
+                if c.get("mailboxId") == box["id"]}
+
+    def delete_conversations(self, ids: set[int]) -> None:
+        """Delete conversations an agent created during a task. demo/reset.py
+        only removes the demo customer's conversations, so one an agent opens
+        for another address would otherwise survive and leak into later tasks
+        (seen 2026-11-25: a stray conversation collected drafts from three runs)."""
+        for cid in sorted(ids):
+            try:
+                self.fs.delete(f"/api/conversations/{cid}")
+            except Exception as exc:  # noqa: BLE001 - cleanup must not stop the run
+                print(f"  warning: could not delete conversation {cid}: {exc}", flush=True)
 
     def _part_pk(self, ipn):
         return next((p["pk"] for p in self.results(self.inv.get("/api/part/", IPN=ipn))
@@ -269,7 +294,8 @@ def _named(entries):
         yield (e, None) if isinstance(e, str) else next(iter(e.items()))
 
 
-def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False) -> Path:
+def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False,
+             label: str = "") -> Path:
     os.environ.setdefault("SMOLAGENTS_MCP_URL", "http://localhost:8099")
     os.environ.setdefault("OLLAMA_API_BASE", "http://localhost:11434/v1")
     sys.path.insert(0, str(ROOT / "smolagents"))
@@ -280,7 +306,7 @@ def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False)
     _, write_tools = tool_inventory()
     agent = build_ops_agent()
 
-    out = _results_path(model, resume)
+    out = _results_path(model, resume, label)
     rows = _resumable_rows(out, model, {t["id"] for t in doc["tasks"]}) if resume else []
     done = {r["id"] for r in rows}
     if done:
@@ -295,13 +321,14 @@ def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False)
         except SetupError as exc:
             rows.append({"id": task["id"], "class": task["class"], "infra_error": str(exc),
                          "passed": None, "reasons": [f"not run: {exc}"]})
-            _save(out, model, rows)
+            _save(out, model, rows, label)
             print(f"  SKIPPED (infrastructure): {exc}", flush=True)
             continue
         state = State()
         for name, _ in _named(task.get("setup")):
             state.setup(name)
         before = _pending()
+        convs_before = state.conversations()
         t0 = time.monotonic()
         error = None
         try:
@@ -321,13 +348,14 @@ def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False)
         called = {c.name for c in calls}
         _reject({i for i, tool in _pending().items()
                  if i not in before and tool in called})
+        state.delete_conversations(state.conversations() - convs_before)
         if error:
             rows.append({"id": task["id"], "class": task["class"],
                          "infra_error": f"agent run aborted: {error}"[:500], "passed": None,
                          "latency_s": round(latency, 1),
                          "calls": [{"name": c.name, "arguments": c.arguments} for c in calls],
                          "reasons": [f"not scored: {error}"[:500]]})
-            _save(out, model, rows)
+            _save(out, model, rows, label)
             print(f"  SKIPPED (infrastructure, {latency:.0f}s): {error[:160]}", flush=True)
             continue
         s = score(task, calls, answer, write_tools, state_results)
@@ -337,8 +365,9 @@ def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False)
             "latency_s": round(latency, 1), "reasons": s.reasons,
             "calls": [{"name": c.name, "arguments": c.arguments} for c in calls],
             "answer": answer[:2000], "reviewed": task.get("reviewed", False),
+            "tools_exposed": len(getattr(agent, "last_selected_tools", ()) or ()),
         })
-        _save(out, model, rows)
+        _save(out, model, rows, label)
         print(f"  {'PASS' if rows[-1]['passed'] else 'FAIL'} ({latency:.0f}s) "
               + ("; ".join(s.reasons[:2]) if s.reasons else ""), flush=True)
     try:
@@ -352,45 +381,114 @@ def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False)
 
 # ── report ───────────────────────────────────────────────────────────────────
 
+GEN_START = "<!-- generated by `run.py --report`; text between these markers is overwritten -->"
+GEN_END = "<!-- end generated -->"
+CLASSES = ["read", "additive", "gated", "decline"]
+
+
+def _load_runs(directory: Path) -> list[dict]:
+    """Result files directly in `directory`. Labelled runs (experiment arms)
+    are excluded: the report compares like with like."""
+    runs = [json.loads(p.read_text()) for p in sorted(directory.glob("*.json"))]
+    return sorted((r for r in runs if not r.get("label")), key=lambda r: r["model"])
+
+
+def _scored(run: dict) -> list[dict]:
+    return [x for x in run["tasks"] if not x.get("infra_error")]
+
+
+def _summary_table(runs: list[dict], n_tasks: int) -> list[str]:
+    pct = lambda xs: f"{100 * sum(xs) / len(xs):.0f}%" if xs else "–"  # noqa: E731
+    lines = ["| Model | Date | Pass | Tool selection | Gating | Task success | "
+             + " | ".join(c.title() for c in CLASSES) + " | Median latency | Tasks run |",
+             "| --- | --- | ---: | ---: | ---: | ---: | " + " | ".join("---:" for _ in CLASSES)
+             + " | ---: | ---: |"]
+    for r in runs:
+        t = _scored(r)
+        if not t:
+            continue
+        infra = len(r["tasks"]) - len(t)
+        lat = sorted(x["latency_s"] for x in t)
+        per_class = [pct([x["passed"] for x in t if x["class"] == c]) for c in CLASSES]
+        lines.append(
+            f"| `{r['model']}`" + (f" ({r['label']})" if r.get('label') else "") + f" | {r['date']} | {pct([x['passed'] for x in t])} | "
+            f"{pct([x['tool_selection'] for x in t])} | {pct([x['gating'] for x in t])} | "
+            f"{pct([bool(x['success']) for x in t])} | " + " | ".join(per_class)
+            + f" | {lat[len(lat) // 2]:.0f}s | {len(t)}/{n_tasks}"
+            + (f" ({infra} infra)" if infra else "") + " |")
+    return lines
+
+
+def _delta_table(before: list[dict], after: list[dict]) -> list[str]:
+    old = {r["model"]: r for r in before}
+    lines = ["| Model | Before | After | Fixed | Broke |", "| --- | ---: | ---: | --- | --- |"]
+    for r in after:
+        b = old.get(r["model"])
+        if not b:
+            continue
+        was = {x["id"]: x.get("passed") for x in _scored(b)}
+        now = {x["id"]: x.get("passed") for x in _scored(r)}
+        common = sorted(set(was) & set(now))
+        fixed = [i for i in common if now[i] and not was[i]]
+        broke = [i for i in common if was[i] and not now[i]]
+        lines.append(f"| `{r['model']}` | {sum(bool(was[i]) for i in common)}/{len(common)} | "
+                     f"{sum(bool(now[i]) for i in common)}/{len(common)} | {len(fixed)} | "
+                     f"{len(broke)}: " + (", ".join(broke) or "–") + " |")
+    return lines
+
+
+def _task_matrix(doc: dict, runs: list[dict]) -> list[str]:
+    lines = ["| Task | Class | " + " | ".join(f"`{r['model']}`" for r in runs) + " |",
+             "| --- | --- | " + " | ".join(":---:" for _ in runs) + " |"]
+    by_run = [{x["id"]: x for x in r["tasks"]} for r in runs]
+    for task in doc["tasks"]:
+        cells = []
+        for rows in by_run:
+            x = rows.get(task["id"])
+            cells.append("–" if x is None else "infra" if x.get("infra_error")
+                         else "✓" if x.get("passed") else "✗")
+        lines.append(f"| {task['id']} | {task.get('class', '')} | " + " | ".join(cells) + " |")
+    return lines
+
+
 def report(doc: dict) -> int:
+    """Write the generated part of RESULTS.md: current runs (evals/results/),
+    the archived pre-fix baseline (evals/results/before/) and the change,
+    keeping any hand-written text outside the generated markers."""
     unreviewed = [t["id"] for t in doc["tasks"] if not t.get("reviewed")]
     if unreviewed:
         print(f"Refusing to write RESULTS.md: {len(unreviewed)} task(s) not yet reviewed "
               f"by a human ({', '.join(unreviewed[:5])}{'…' if len(unreviewed) > 5 else ''}).")
         return 1
-    runs = [json.loads(p.read_text()) for p in sorted(RESULTS_DIR.glob("*.json"))]
-    if not runs:
+    after = _load_runs(RESULTS_DIR)
+    before = _load_runs(RESULTS_DIR / "before") if (RESULTS_DIR / "before").is_dir() else []
+    if not after:
         print("No results in evals/results/ yet.")
         return 1
-    classes = ["read", "additive", "gated", "decline"]
-    lines = ["# Agent evaluation results", "",
-             f"{len(doc['tasks'])} human-reviewed tasks; agent `ops` "
-             "(smolagents/agents/ops_agent.py); each task on a freshly seeded demo.", "",
-             "| Model | Date | Pass | Tool selection | Gating | Task success | "
-             + " | ".join(c.title() for c in classes) + " | Median latency | Tasks run |",
-             "| --- | --- | ---: | ---: | ---: | ---: | " + " | ".join("---:" for _ in classes)
-             + " | ---: | ---: |"]
-    for r in runs:
-        infra = [x for x in r["tasks"] if x.get("infra_error")]
-        t = [x for x in r["tasks"] if not x.get("infra_error")]
-        if not t:
-            continue
-        pct = lambda xs: f"{100 * sum(xs) / len(xs):.0f}%" if xs else "–"  # noqa: E731
-        lat = sorted(x["latency_s"] for x in t)
-        per_class = [pct([x["passed"] for x in t if x["class"] == c]) for c in classes]
-        lines.append(
-            f"| `{r['model']}` | {r['date']} | {pct([x['passed'] for x in t])} | "
-            f"{pct([x['tool_selection'] for x in t])} | {pct([x['gating'] for x in t])} | "
-            f"{pct([bool(x['success']) for x in t])} | " + " | ".join(per_class)
-            + f" | {lat[len(lat) // 2]:.0f}s | {len(t)}/{len(doc['tasks'])}"
-            + (f" ({len(infra)} infra)" if infra else "") + " |")
-    lines += ["", "Columns: **Tool selection** = required/ordered tools called, no "
+    n = len(doc["tasks"])
+    lines = [GEN_START, "", "### Current", "", *_summary_table(after, n)]
+    if before:
+        lines += ["", "### Before the harness fixes", "", *_summary_table(before, n),
+                  "", "### Change per model (tasks scored in both runs)", "",
+                  *_delta_table(before, after)]
+    lines += ["", "### Per task (current)", "", *_task_matrix(doc, after),
+              "", "Columns: **Tool selection** = required/ordered tools called, no "
               "forbidden ones. **Gating** = writes stayed in their tier (gated writes "
               "came back PENDING APPROVAL, were reported, and weren't retried). **Task "
               "success** = answer and live-state checks. **Tasks run** excludes tasks "
               "skipped for infrastructure errors (demo reset/seed failed), which aren't "
-              "counted against the model. Raw runs: `evals/results/`."]
-    (HERE / "RESULTS.md").write_text("\n".join(lines) + "\n")
+              "counted against the model. Raw runs: `evals/results/`.", "", GEN_END]
+    generated = "\n".join(lines)
+    out = HERE / "RESULTS.md"
+    text = out.read_text() if out.exists() else ""
+    if GEN_START in text and GEN_END in text:
+        head, rest = text.split(GEN_START, 1)
+        text = head + generated + rest.split(GEN_END, 1)[1]
+    else:
+        text = (f"# Agent evaluation results\n\n{n} human-reviewed tasks; agent `ops` "
+                "(smolagents/agents/ops_agent.py); each task on a freshly seeded demo.\n\n"
+                + generated + "\n")
+    out.write_text(text)
     print("wrote evals/RESULTS.md")
     return 0
 
@@ -425,6 +523,8 @@ def main() -> int:
     ap.add_argument("--only", help="comma-separated task ids")
     ap.add_argument("--resume", action="store_true",
                     help="continue the newest results file for --model, skipping scored tasks")
+    ap.add_argument("--label", default="",
+                    help="experiment-arm label, kept in the results file name and JSON")
     ap.add_argument("--rescore", nargs="+", type=Path, metavar="RESULTS_JSON",
                     help="re-apply the current answer checks to saved results, in place")
     a = ap.parse_args()
@@ -439,7 +539,7 @@ def main() -> int:
         ap.error("--model is required for a live run (or use --dry-run / --report)")
     if dry_run(doc):
         return 1
-    run_live(doc, a.model, set(a.only.split(",")) if a.only else None, a.resume)
+    run_live(doc, a.model, set(a.only.split(",")) if a.only else None, a.resume, a.label)
     return 0
 
 

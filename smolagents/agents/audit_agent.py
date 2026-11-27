@@ -2,7 +2,7 @@
 
 Implements the reviewer-pool convention: each expertise domain has a lead
 model that produces work and a pool of same-expertise, lower-benchmark
-models that review it (see the model hierarchy table in README.md).
+models that review it (see the model hierarchy table in docs/model-stack.md).
 Reviews run sequentially because Ollama swaps one model in VRAM at a time.
 """
 

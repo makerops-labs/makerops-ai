@@ -2,7 +2,7 @@
 
 Snapshot of the installed Ollama models, what each is for, and when *not*
 to reach for it. Assignments follow the lead-per-domain / reviewer-diversity
-convention (see the hierarchy table in [../README.md](../README.md)): the
+convention (see [Model hierarchy](#model-hierarchy) below): the
 best benchmark performer that runs acceptably on this hardware leads a
 domain; same-expertise models plus one cross-lineage model (`gpt-oss:20b`,
 OpenAI) review to catch the lead's blind spots. Leads switch on published
@@ -14,6 +14,58 @@ active parameters), expensive for dense ones. Stop `trellis` before loading
 any `qwen3.6:35b*` model (host-RAM starvation; see CLAUDE.md).
 
 Last updated: 2026-08-28.
+
+## Model hierarchy
+
+The stack follows a **lead-per-domain** convention: each expertise domain has
+one lead model (the best benchmark performer that runs on this hardware), and
+multi-model review uses same-expertise models with *lower* benchmark scores as
+supplementary reviewers to catch the lead's blind spots. Reviewer pools
+deliberately include a different lineage (gpt-oss, OpenAI) so the models don't
+share training blind spots. Since 2026-08-26, "best that runs on this
+hardware" splits by **workload latency sensitivity**, not just by domain:
+interactive/chat-facing roles keep the fastest good-enough model, while
+unattended background queues (devteam engineer phases, the hardware
+specialist below, reviewers) can afford a slower, higher-benchmark model —
+the machine sits idle between jobs anyway. See this file's
+2026-08-26 pass. **Any `qwen3.8:27b` usage in this stack means the
+`-64k` derivative, never the bare tag** — the bare tag's reasoning
+exhausts Ollama's 4k default context before producing output (observed
+2026-08-28; see that doc's 2026-08-28 note).
+
+| Domain | Lead | Reviewers |
+| --- | --- | --- |
+| Coding (interactive — chat coder, Coding Assistant preset) | `qwen3.6:35b` (73.4% SWE-bench Verified) | `qwen3.8:27b-64k`, `gpt-oss:20b` |
+| Coding (background — devteam engineer phases) | `qwen3.8:27b-64k` (dense; successor to qwen3.6:27b — SWE-bench Pro 61.7% vs 53.5%, Terminal-Bench 2.1 73.0% vs 63.4%; same footprint, ~14 tok/s here, fine for unattended phases; **-64k required** — this model's reasoning exhausts Ollama's 4k default before producing output, observed 2026-08-28) | — |
+| KiCad build-plans (hardware specialist) | `qwen3.8:27b-64k` (dense, structure-precise; same as above — reviewer/specialist-class speed, not the interactive lead) | — |
+| Default chat / task dispatch | `qwen3.6:35b-64k` (derivative, checklist §1) | — |
+| General / agents / planning | `qwen3.6:35b-64k` (same derivative — one resident general model for chat and agents) | `qwen3.5:9b`, `gpt-oss:20b` |
+| Vision understanding | `qwen3.5:9b` / `qwen3.6:35b` (both natively multimodal) | — |
+| Image generation | FLUX.1 (ComfyUI, in makerops-core) | — |
+| Image-to-3D | `TRELLIS-image-large` 1.2B (trellis service, GPU on-demand) | — |
+| Speech (TTS, agent-usable) | Kokoro-82M (speech service, CPU) | — |
+| Embeddings (RAG) | `qwen3-embedding:0.6b` | — |
+
+The review workflow is exposed two ways: the **Code Auditor / General
+Auditor** presets in [openwebui/contexts/](../openwebui/contexts/) (manual), and
+the smolagents **auditor** agent (automated — see
+[smolagents/README.md](../smolagents/README.md)). When a new model release beats
+a lead on domain benchmarks and fits the hardware, the old lead becomes a
+reviewer candidate and configs move on: `SMOLAGENTS_*_MODEL_ID` env vars, the
+context presets, and this table.
+
+The **debate** system (below) applies the same reviewer-decorrelation
+reasoning to a different kind of task: its entrepreneur and monitor personas
+default to the default-chat lead `qwen3.6:35b-64k` (both make judgment calls
+where quality matters more than the multi-minute VRAM-swap cost, which is
+fine for an unattended background tool), while its critic persona defaults to
+`gpt-oss:20b-32k` — a context-bumped derivative (checklist §5h) of the same
+cross-lineage model used in the reviewer pools — specifically so it doesn't
+share the other two personas' blind spots. (The derivative exists because
+the base model serves at Ollama's 4k default context, which truncates a
+debate turn mid-answer; the reviewer pools still use base `gpt-oss:20b`,
+whose short review prompts fit, but a long artifact review would hit the
+same ceiling — switch the pool to the -32k derivative if that shows up.)
 
 ## Installed models
 
