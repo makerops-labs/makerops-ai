@@ -85,9 +85,11 @@ def _demo(script: str, attempts: int = 3, backoff_s: float = 15) -> None:
     raise SetupError(f"demo/{script} failed {attempts} times: {last[0]}")
 
 
-def _results_path(model: str, resume: bool) -> Path:
-    """Today's results file, or with --resume the newest existing one for the model."""
-    safe = model.replace(":", "_").replace("/", "_")
+def _results_path(model: str, resume: bool, label: str = "") -> Path:
+    """Today's results file, or with --resume the newest existing one for the model.
+    A --label (an experiment arm, e.g. "toolfilter-domain") is part of the name,
+    so arms of the same model on the same day never overwrite each other."""
+    safe = model.replace(":", "_").replace("/", "_") + (f"--{label}" if label else "")
     if resume:
         existing = sorted(p for p in RESULTS_DIR.glob(f"????-??-??-{safe}.json")
                           if p.name[11:] == f"{safe}.json")
@@ -112,12 +114,14 @@ def _resumable_rows(path: Path, model: str, task_ids: set[str]) -> list[dict]:
             if r.get("id") in task_ids and not r.get("infra_error")]
 
 
-def _save(path: Path, model: str, rows: list[dict]) -> None:
+def _save(path: Path, model: str, rows: list[dict], label: str = "") -> None:
     """Write after every task (atomically), so a crash loses at most one task."""
     RESULTS_DIR.mkdir(exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps({"model": model, "date": path.name[:10], "agent": "ops",
-                               "tasks": rows}, indent=1))
+    meta = {"model": model, "date": path.name[:10], "agent": "ops"}
+    if label:
+        meta["label"] = label
+    tmp.write_text(json.dumps({**meta, "tasks": rows}, indent=1))
     tmp.replace(path)
 
 
@@ -290,7 +294,8 @@ def _named(entries):
         yield (e, None) if isinstance(e, str) else next(iter(e.items()))
 
 
-def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False) -> Path:
+def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False,
+             label: str = "") -> Path:
     os.environ.setdefault("SMOLAGENTS_MCP_URL", "http://localhost:8099")
     os.environ.setdefault("OLLAMA_API_BASE", "http://localhost:11434/v1")
     sys.path.insert(0, str(ROOT / "smolagents"))
@@ -301,7 +306,7 @@ def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False)
     _, write_tools = tool_inventory()
     agent = build_ops_agent()
 
-    out = _results_path(model, resume)
+    out = _results_path(model, resume, label)
     rows = _resumable_rows(out, model, {t["id"] for t in doc["tasks"]}) if resume else []
     done = {r["id"] for r in rows}
     if done:
@@ -316,7 +321,7 @@ def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False)
         except SetupError as exc:
             rows.append({"id": task["id"], "class": task["class"], "infra_error": str(exc),
                          "passed": None, "reasons": [f"not run: {exc}"]})
-            _save(out, model, rows)
+            _save(out, model, rows, label)
             print(f"  SKIPPED (infrastructure): {exc}", flush=True)
             continue
         state = State()
@@ -350,7 +355,7 @@ def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False)
                          "latency_s": round(latency, 1),
                          "calls": [{"name": c.name, "arguments": c.arguments} for c in calls],
                          "reasons": [f"not scored: {error}"[:500]]})
-            _save(out, model, rows)
+            _save(out, model, rows, label)
             print(f"  SKIPPED (infrastructure, {latency:.0f}s): {error[:160]}", flush=True)
             continue
         s = score(task, calls, answer, write_tools, state_results)
@@ -360,8 +365,9 @@ def run_live(doc: dict, model: str, only: set[str] | None, resume: bool = False)
             "latency_s": round(latency, 1), "reasons": s.reasons,
             "calls": [{"name": c.name, "arguments": c.arguments} for c in calls],
             "answer": answer[:2000], "reviewed": task.get("reviewed", False),
+            "tools_exposed": len(getattr(agent, "last_selected_tools", ()) or ()),
         })
-        _save(out, model, rows)
+        _save(out, model, rows, label)
         print(f"  {'PASS' if rows[-1]['passed'] else 'FAIL'} ({latency:.0f}s) "
               + ("; ".join(s.reasons[:2]) if s.reasons else ""), flush=True)
     try:
@@ -405,7 +411,7 @@ def _summary_table(runs: list[dict], n_tasks: int) -> list[str]:
         lat = sorted(x["latency_s"] for x in t)
         per_class = [pct([x["passed"] for x in t if x["class"] == c]) for c in CLASSES]
         lines.append(
-            f"| `{r['model']}` | {r['date']} | {pct([x['passed'] for x in t])} | "
+            f"| `{r['model']}`" + (f" ({r['label']})" if r.get('label') else "") + f" | {r['date']} | {pct([x['passed'] for x in t])} | "
             f"{pct([x['tool_selection'] for x in t])} | {pct([x['gating'] for x in t])} | "
             f"{pct([bool(x['success']) for x in t])} | " + " | ".join(per_class)
             + f" | {lat[len(lat) // 2]:.0f}s | {len(t)}/{n_tasks}"
@@ -517,6 +523,8 @@ def main() -> int:
     ap.add_argument("--only", help="comma-separated task ids")
     ap.add_argument("--resume", action="store_true",
                     help="continue the newest results file for --model, skipping scored tasks")
+    ap.add_argument("--label", default="",
+                    help="experiment-arm label, kept in the results file name and JSON")
     ap.add_argument("--rescore", nargs="+", type=Path, metavar="RESULTS_JSON",
                     help="re-apply the current answer checks to saved results, in place")
     a = ap.parse_args()
@@ -531,7 +539,7 @@ def main() -> int:
         ap.error("--model is required for a live run (or use --dry-run / --report)")
     if dry_run(doc):
         return 1
-    run_live(doc, a.model, set(a.only.split(",")) if a.only else None, a.resume)
+    run_live(doc, a.model, set(a.only.split(",")) if a.only else None, a.resume, a.label)
     return 0
 
 
