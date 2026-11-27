@@ -6,12 +6,11 @@ models that review it (see the model hierarchy table in docs/model-stack.md).
 Reviews run sequentially because Ollama swaps one model in VRAM at a time.
 """
 
-from openai import OpenAI
 from smolagents import ToolCallingAgent, tool
 
 from . import config
 from .context import with_baseline
-from .model import get_model
+from .model import get_model, raw_client
 from .thoughts import DRAFT_AND_EVALUATE, strip_thoughts
 
 _REVIEWER_SYSTEM = (
@@ -41,13 +40,12 @@ def collect_reviews(domain: str, request: str) -> str:
     """
     pool = (config.CODING_REVIEW_MODEL_IDS if domain == "coding"
             else config.GENERAL_REVIEW_MODEL_IDS)
-    client = OpenAI(base_url=config.OLLAMA_API_BASE,
-                    api_key=config.OLLAMA_API_KEY)
     sections = []
     for model_id in pool:
         try:
+            client, name = raw_client(model_id)
             resp = client.chat.completions.create(
-                model=model_id,
+                model=name,
                 messages=[{"role": "system", "content": _REVIEWER_SYSTEM},
                           {"role": "user", "content": request}],
             )

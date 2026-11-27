@@ -680,17 +680,15 @@ def _run_raw_persona(spec: dict, task: str) -> str:
     One corrective retry when the answer violates the prose contract;
     returns the best text obtained ('' only if the model produced nothing
     usable at all)."""
-    from openai import OpenAI
-
     from .debate.format import check_round_prose
+    from .model import raw_client
 
-    client = OpenAI(base_url=config.OLLAMA_API_BASE,
-                    api_key=config.OLLAMA_API_KEY)
+    client, model_name = raw_client(spec["model_id"])
     messages = [{"role": "system", "content": spec["raw_system"]},
                 {"role": "user", "content": task}]
     best = ""
     for _ in range(2):
-        resp = client.chat.completions.create(model=spec["model_id"],
+        resp = client.chat.completions.create(model=model_name,
                                               messages=messages)
         text = _clean_round_text(resp.choices[0].message.content or "")
         if len(text) >= 200:

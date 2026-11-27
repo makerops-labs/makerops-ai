@@ -10,6 +10,14 @@ OLLAMA_API_BASE = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434/v1")
 # Ollama ignores the key, but the OpenAI client requires a value.
 OLLAMA_API_KEY = os.environ.get("OLLAMA_API_KEY", "ollama")
 
+# Per-model engine choice: model ids listed here (Ollama-style names, as used
+# everywhere else) are served by a llama.cpp router (makerops-core ai/llamacpp)
+# instead of Ollama. Empty = everything on Ollama. On the llama.cpp side the id's
+# ':' becomes '-' (the router reads text after ':' as a quant tag).
+LLAMACPP_API_BASE = os.environ.get("SMOLAGENTS_LLAMACPP_API_BASE", "http://localhost:8110/v1")
+LLAMACPP_MODELS = frozenset(
+    m.strip() for m in os.environ.get("SMOLAGENTS_LLAMACPP_MODELS", "").split(",") if m.strip())
+
 CODING_MODEL_ID = os.environ.get("SMOLAGENTS_CODING_MODEL_ID", "qwen3.6:35b")
 GENERAL_MODEL_ID = os.environ.get("SMOLAGENTS_GENERAL_MODEL_ID", "qwen3.6:35b-64k")
 
