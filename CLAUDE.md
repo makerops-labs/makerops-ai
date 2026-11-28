@@ -54,6 +54,11 @@ applies the same reviewer-decorrelation reasoning to its critic persona
 pools' model; the base serves at Ollama's 4k default, which truncates a
 debate turn mid-answer) — see the "Debate system" bullet below.
 
+**Engine per model** (2026-11-27): `qwen3.6:35b-64k` runs on the llama.cpp
+router (core `ai/llamacpp`, :8110, via `SMOLAGENTS_LLAMACPP_MODELS`);
+everything else runs on Ollama. Evidence and gotchas are in
+docs/model-stack.md.
+
 ## Architecture facts that cost debugging time
 
 - **Best-practice guidance library**: `docs/guidance/` (git source of
